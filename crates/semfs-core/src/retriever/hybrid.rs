@@ -2,7 +2,7 @@ use super::keyword::KeywordRetriever;
 use super::rrf::reciprocal_rank_fusion;
 use super::semantic::SemanticRetriever;
 use crate::error::Result;
-use crate::query::types::ParsedQuery;
+use crate::query::types::{ParsedQuery, SortOrder};
 use semfs_storage::{SearchResult, SqliteStore, MetadataFilter};
 use std::sync::Arc;
 use tracing::debug;
@@ -11,8 +11,7 @@ pub struct HybridRetriever {
     keyword: KeywordRetriever,
     semantic: SemanticRetriever,
     metadata_store: Arc<SqliteStore>,
-    #[allow(dead_code)]
-    alpha: f32,
+    _alpha: f32,
     rrf_k: f32,
 }
 
@@ -27,7 +26,7 @@ impl HybridRetriever {
             keyword,
             semantic,
             metadata_store,
-            alpha,
+            _alpha: alpha,
             rrf_k: 60.0,
         }
     }
@@ -93,6 +92,28 @@ impl HybridRetriever {
                 }
             })
             .collect();
+
+        // Apply sort order
+        let mut results = results;
+        match &query.sort {
+            SortOrder::Relevance => {} // already sorted by RRF score
+            SortOrder::NameAsc => results.sort_by(|a, b| a.name.cmp(&b.name)),
+            SortOrder::NameDesc => results.sort_by(|a, b| b.name.cmp(&a.name)),
+            SortOrder::DateDesc => {
+                results.sort_by(|a, b| {
+                    let a_time = self.metadata_store.get_file(a.file_id).map(|f| f.modified_at).unwrap_or(0);
+                    let b_time = self.metadata_store.get_file(b.file_id).map(|f| f.modified_at).unwrap_or(0);
+                    b_time.cmp(&a_time)
+                });
+            }
+            SortOrder::DateAsc => {
+                results.sort_by(|a, b| {
+                    let a_time = self.metadata_store.get_file(a.file_id).map(|f| f.modified_at).unwrap_or(0);
+                    let b_time = self.metadata_store.get_file(b.file_id).map(|f| f.modified_at).unwrap_or(0);
+                    a_time.cmp(&b_time)
+                });
+            }
+        }
 
         debug!(result_count = results.len(), "Final search results");
         Ok(results)

@@ -29,7 +29,9 @@ impl QueryFilter {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum SortOrder {
+    #[default]
     Relevance,
     DateDesc,
     DateAsc,
@@ -37,8 +39,3 @@ pub enum SortOrder {
     NameDesc,
 }
 
-impl Default for SortOrder {
-    fn default() -> Self {
-        Self::Relevance
-    }
-}

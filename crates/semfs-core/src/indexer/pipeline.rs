@@ -1,8 +1,8 @@
-use crate::error::{CoreError, Result};
+use crate::error::Result;
 use crate::indexer::chunker;
 use crate::indexer::crawler;
 use semfs_embed::Embedder;
-use semfs_storage::{Chunk, ChunkEmbedding, ChunkType, FileMeta, LanceStore, SqliteStore, CacheManager};
+use semfs_storage::{Chunk, ChunkEmbedding, FileMeta, LanceStore, SqliteStore, CacheManager};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -44,8 +44,10 @@ impl IndexingPipeline {
         info!(root = %root.display(), "Starting directory indexing");
         let files = crawler::crawl_directory(root, &self.ignore_patterns, self.max_file_size)?;
 
-        let mut stats = IndexingStats::default();
-        stats.total_files = files.len();
+        let mut stats = IndexingStats {
+            total_files: files.len(),
+            ..Default::default()
+        };
 
         // Process in batches
         for batch in files.chunks(self.batch_size) {

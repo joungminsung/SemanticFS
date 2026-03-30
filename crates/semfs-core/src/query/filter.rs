@@ -95,12 +95,13 @@ pub fn extract_extension_filter(text: &str) -> Option<(QueryFilter, String)> {
         (r"(?i)PDF", vec!["pdf".to_string()]),
     ];
 
+    let cleanup_re = Regex::new(r"(?i)\s*(파일|file|코드|code)\s*").unwrap();
+
     for (pattern, exts) in mappings {
         let re = Regex::new(pattern).unwrap();
         if re.is_match(text) {
             let cleaned = re.replace(text, "").trim().to_string();
-            // Clean up leftover "파일" or "file"
-            let cleaned = Regex::new(r"(?i)\s*(파일|file|코드|code)\s*").unwrap()
+            let cleaned = cleanup_re
                 .replace_all(&cleaned, " ").trim().to_string();
             debug!(extensions = ?exts, "Extracted extension filter");
             return Some((QueryFilter::Extension(exts), cleaned));

@@ -240,10 +240,13 @@ impl Filesystem for SemanticFilesystem {
     }
 
     fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
-        let map = self.inode_map.read();
-        match map.get(&ino) {
+        let entry = {
+            let map = self.inode_map.read();
+            map.get(&ino).cloned()
+        };
+        match entry {
             Some(entry) => {
-                let attr = self.make_attr(ino, entry);
+                let attr = self.make_attr(ino, &entry);
                 reply.attr(&TTL, &attr);
             }
             None => {
@@ -337,20 +340,27 @@ impl Filesystem for SemanticFilesystem {
 
         debug!(ino, path = %real_path.display(), offset, size, "FUSE read");
 
-        match std::fs::read(&real_path) {
-            Ok(data) => {
-                let start = offset as usize;
-                let end = std::cmp::min(start + size as usize, data.len());
-                if start < data.len() {
-                    reply.data(&data[start..end]);
-                } else {
-                    reply.data(&[]);
-                }
-            }
+        use std::io::{Read, Seek, SeekFrom};
+
+        let mut file = match std::fs::File::open(&real_path) {
+            Ok(f) => f,
             Err(e) => {
                 error!(path = %real_path.display(), error = %e, "Read failed");
                 reply.error(EIO);
+                return;
             }
+        };
+        if offset > 0 {
+            if let Err(e) = file.seek(SeekFrom::Start(offset as u64)) {
+                error!(path = %real_path.display(), error = %e, "Seek failed");
+                reply.error(EIO);
+                return;
+            }
+        }
+        let mut buf = vec![0u8; size as usize];
+        match file.read(&mut buf) {
+            Ok(n) => reply.data(&buf[..n]),
+            Err(_) => reply.error(EIO),
         }
     }
 
@@ -359,7 +369,7 @@ impl Filesystem for SemanticFilesystem {
         _req: &Request,
         ino: u64,
         _fh: u64,
-        _offset: i64,
+        offset: i64,
         data: &[u8],
         _write_flags: u32,
         _flags: i32,
@@ -390,16 +400,39 @@ impl Filesystem for SemanticFilesystem {
             }
         };
 
-        if let Some(ref handler) = self.write_handler {
-            match handler.handle_write(&real_path, data) {
-                Ok(()) => reply.written(data.len() as u32),
-                Err(e) => {
-                    error!(error = %e, "Write handler error");
-                    reply.error(EIO);
+        if offset == 0 {
+            // Full write from beginning: use WAL-protected handler when available
+            if let Some(ref handler) = self.write_handler {
+                match handler.handle_write(&real_path, data) {
+                    Ok(()) => reply.written(data.len() as u32),
+                    Err(e) => {
+                        error!(error = %e, "Write handler error");
+                        reply.error(EIO);
+                    }
                 }
+            } else {
+                reply.error(EACCES);
             }
         } else {
-            reply.error(EACCES);
+            // TODO: WAL does not support partial writes yet; fall back to direct I/O
+            warn!(offset, path = %real_path.display(), "Partial write without WAL protection");
+            use std::io::{Write as IoWrite, Seek, SeekFrom};
+
+            let mut file = match std::fs::OpenOptions::new().write(true).open(&real_path) {
+                Ok(f) => f,
+                Err(_) => {
+                    reply.error(EIO);
+                    return;
+                }
+            };
+            if let Err(_) = file.seek(SeekFrom::Start(offset as u64)) {
+                reply.error(EIO);
+                return;
+            }
+            match file.write_all(data) {
+                Ok(()) => reply.written(data.len() as u32),
+                Err(_) => reply.error(EIO),
+            }
         }
     }
 

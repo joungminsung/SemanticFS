@@ -57,7 +57,7 @@ impl ChunkType {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_str_lossy(s: &str) -> Self {
         match s {
             "module" => Self::Module,
             "class" => Self::Class,
@@ -114,7 +114,7 @@ impl OperationStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
+    pub fn from_str_lossy(s: &str) -> Self {
         match s {
             "pending" => Self::Pending,
             "executing" => Self::Executing,

@@ -87,10 +87,20 @@ impl WriteHandler {
                 info!(path = %path.display(), trash = %trash_path.display(), "File soft-deleted");
                 Ok(())
             }
-            Err(e) => {
-                self.wal.mark_failed(wal_id)?;
-                error!(error = %e, "Delete failed");
-                Err(CoreError::Io(e))
+            Err(_) => {
+                // Rename may fail across filesystems, fall back to copy+delete
+                match std::fs::copy(path, &trash_path).and_then(|_| std::fs::remove_file(path)) {
+                    Ok(()) => {
+                        self.wal.mark_completed(wal_id)?;
+                        info!(path = %path.display(), trash = %trash_path.display(), "File soft-deleted (copy+delete)");
+                        Ok(())
+                    }
+                    Err(e) => {
+                        self.wal.mark_failed(wal_id)?;
+                        error!(error = %e, "Delete failed");
+                        Err(CoreError::Io(e))
+                    }
+                }
             }
         }
     }

@@ -33,6 +33,19 @@ pub fn execute_set(key: String, value: String) -> Result<()> {
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid bool: {}", value))?;
         }
+        "batch_size" | "embedding.batch_size" => {
+            config.embedding.batch_size = value
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Invalid batch_size: {}", value))?;
+        }
+        "dimensions" | "embedding.dimensions" => {
+            config.embedding.dimensions = value
+                .parse()
+                .map_err(|_| anyhow::anyhow!("Invalid dimensions: {}", value))?;
+        }
+        "interval" | "index.interval" => {
+            config.index.interval = value.clone();
+        }
         _ => {
             anyhow::bail!("Unknown config key: {}", key);
         }
@@ -55,6 +68,9 @@ pub fn execute_get(key: String) -> Result<()> {
         "ignore" | "source.ignore" => config.source.ignore.join(", "),
         "max_file_size" | "source.max_file_size" => config.source.max_file_size,
         "watch" | "index.watch" => config.index.watch.to_string(),
+        "batch_size" | "embedding.batch_size" => config.embedding.batch_size.to_string(),
+        "dimensions" | "embedding.dimensions" => config.embedding.dimensions.to_string(),
+        "interval" | "index.interval" => config.index.interval.clone(),
         _ => {
             anyhow::bail!("Unknown config key: {}", key);
         }

@@ -46,7 +46,11 @@ pub fn create_provider() -> Result<Box<dyn FuseProvider>> {
         Ok(Box::new(crate::windows::WindowsFuseProvider::new()))
     }
 
-    #[cfg(not(feature = "fuse-mount"))]
+    #[cfg(not(any(
+        all(feature = "fuse-mount", target_os = "linux"),
+        all(feature = "fuse-mount", target_os = "macos"),
+        all(feature = "fuse-mount", target_os = "windows"),
+    )))]
     {
         Err(crate::error::FuseError::UnsupportedPlatform)
     }

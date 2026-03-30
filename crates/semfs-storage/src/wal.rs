@@ -112,6 +112,11 @@ impl WalStore {
             let dest: Option<String> = row.get(3)?;
             let status_str: String = row.get(4)?;
 
+            // Note: Write WAL entries are advisory-only and cannot be replayed.
+            // The file data is not persisted to the WAL table, so recovery
+            // produces an empty `data` vec. This is by design -- the WAL
+            // protects move/copy/delete atomicity, but write-data recovery
+            // requires the application to re-write.
             let operation = match op_type.as_str() {
                 "move" => FileOperation::Move {
                     source: source.into(),
@@ -129,7 +134,7 @@ impl WalStore {
             Ok(WalEntry {
                 id: row.get(0)?,
                 operation,
-                status: OperationStatus::from_str(&status_str),
+                status: OperationStatus::from_str_lossy(&status_str),
                 created_at: row.get(5)?,
                 completed_at: row.get(6)?,
             })

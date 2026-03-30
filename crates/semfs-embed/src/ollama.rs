@@ -2,13 +2,12 @@ use crate::traits::Embedder;
 use anyhow::Result;
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, warn};
+use tracing::debug;
 
 pub struct OllamaEmbedder {
     client: Client,
     base_url: String,
     model: String,
-    dimensions: usize,
 }
 
 #[derive(Serialize)]
@@ -19,7 +18,7 @@ struct EmbedRequest {
 
 #[derive(Deserialize)]
 struct EmbedResponse {
-    embedding: Vec<f32>,
+    embeddings: Vec<Vec<f32>>,
 }
 
 impl OllamaEmbedder {
@@ -33,8 +32,6 @@ impl OllamaEmbedder {
                 .build()?,
             base_url,
             model: model.to_string(),
-            // Will be determined on first embed call
-            dimensions: 0,
         })
     }
 
@@ -45,7 +42,6 @@ impl OllamaEmbedder {
                 .build()?,
             base_url: base_url.to_string(),
             model: model.to_string(),
-            dimensions: 0,
         })
     }
 
@@ -61,7 +57,7 @@ impl OllamaEmbedder {
 
 impl Embedder for OllamaEmbedder {
     fn embed_text(&self, text: &str) -> Result<Vec<f32>> {
-        let url = format!("{}/api/embeddings", self.base_url);
+        let url = format!("{}/api/embed", self.base_url);
         let request = EmbedRequest {
             model: self.model.clone(),
             prompt: text.to_string(),
@@ -82,14 +78,11 @@ impl Embedder for OllamaEmbedder {
         let embed_response: EmbedResponse = response.json()
             .map_err(|e| anyhow::anyhow!("Failed to parse Ollama response: {}", e))?;
 
-        debug!(model = %self.model, dims = embed_response.embedding.len(), "Embedded text");
-        Ok(embed_response.embedding)
-    }
+        let embedding = embed_response.embeddings.into_iter().next()
+            .ok_or_else(|| anyhow::anyhow!("Ollama returned no embeddings"))?;
 
-    fn embed_batch(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>> {
-        // Ollama doesn't have native batch API, so we call sequentially
-        // but could be parallelized with rayon in the future
-        texts.iter().map(|t| self.embed_text(t)).collect()
+        debug!(model = %self.model, dims = embedding.len(), "Embedded text");
+        Ok(embedding)
     }
 
     fn dimensions(&self) -> usize {

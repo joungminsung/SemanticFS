@@ -134,9 +134,11 @@ impl SqliteStore {
 
     pub fn delete_file(&self, id: FileId) -> Result<()> {
         let conn = self.conn.lock();
-        conn.execute("DELETE FROM files WHERE id=?1", params![id])?;
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM files WHERE id=?1", params![id])?;
         // FTS cleanup
-        conn.execute("DELETE FROM files_fts WHERE rowid=?1", params![id])?;
+        tx.execute("DELETE FROM files_fts WHERE rowid=?1", params![id])?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -293,8 +295,9 @@ impl SqliteStore {
                     }
                 }
                 MetadataFilter::PathPrefix(prefix) => {
-                    conditions.push(format!("path LIKE ?{}", param_values.len() + 1));
-                    param_values.push(Box::new(format!("{}%", prefix)));
+                    conditions.push(format!("path LIKE ?{} ESCAPE '\\'", param_values.len() + 1));
+                    let escaped = prefix.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+                    param_values.push(Box::new(format!("{}%", escaped)));
                 }
             }
         }
@@ -347,7 +350,7 @@ impl SqliteStore {
                 chunk_index: row.get::<_, i64>(2)? as usize,
                 parent_chunk_id: row.get(3)?,
                 content: row.get(4)?,
-                chunk_type: ChunkType::from_str(&row.get::<_, String>(5)?),
+                chunk_type: ChunkType::from_str_lossy(&row.get::<_, String>(5)?),
                 start_line: row.get::<_, Option<i64>>(6)?.map(|l| l as usize),
                 end_line: row.get::<_, Option<i64>>(7)?.map(|l| l as usize),
                 metadata: std::collections::HashMap::new(),

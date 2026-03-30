@@ -69,15 +69,25 @@ impl QueryCache {
         self.entries.read().len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
     pub fn hit_rate_info(&self) -> (usize, usize) {
         // Returns (cache_size, max_size)
         (self.entries.read().len(), self.max_size)
     }
 }
 
-/// L2: Embedding cache (file hash -> embedding vector, disk-backed)
+/// L2: Embedding cache (file hash -> embedding vector, in-memory)
 pub struct EmbeddingCache {
     entries: RwLock<HashMap<String, Vec<f32>>>,
+}
+
+impl Default for EmbeddingCache {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl EmbeddingCache {
@@ -101,6 +111,10 @@ impl EmbeddingCache {
 
     pub fn len(&self) -> usize {
         self.entries.read().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -162,6 +176,10 @@ impl ParsedQueryCache {
     pub fn len(&self) -> usize {
         self.entries.read().len()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Combined cache manager
@@ -180,16 +198,18 @@ impl CacheManager {
         }
     }
 
-    pub fn default() -> Self {
-        Self::new(1000, 300, 500)
-    }
-
     /// Called when a file changes -- invalidates relevant caches
     pub fn on_file_changed(&self, file_id: FileId, old_hash: Option<&str>) {
         self.query_cache.invalidate_file(file_id);
         if let Some(hash) = old_hash {
             self.embedding_cache.remove(hash);
         }
+    }
+}
+
+impl Default for CacheManager {
+    fn default() -> Self {
+        Self::new(1000, 300, 500)
     }
 }
 

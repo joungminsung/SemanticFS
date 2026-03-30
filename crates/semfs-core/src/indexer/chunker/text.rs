@@ -5,6 +5,12 @@ use std::path::Path;
 /// Text/markdown chunker - splits by headings and paragraphs
 pub struct TextChunker;
 
+impl Default for TextChunker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TextChunker {
     pub fn new() -> Self {
         Self

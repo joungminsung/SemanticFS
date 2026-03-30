@@ -16,7 +16,8 @@ impl KeywordRetriever {
             return Ok(Vec::new());
         }
 
-        let results = self.store.search_fts(query)
+        let safe_query = format!("\"{}\"", query.replace('"', "\"\""));
+        let results = self.store.search_fts(&safe_query)
             .map_err(crate::error::CoreError::Storage)?;
 
         // Normalize FTS5 scores (they're negative, lower = better match)

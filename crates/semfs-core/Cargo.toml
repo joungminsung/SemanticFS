@@ -8,7 +8,6 @@ description = "Core engine for SemanticFS: query parsing, retrieval, indexing, a
 [dependencies]
 semfs-storage = { path = "../semfs-storage" }
 semfs-embed = { path = "../semfs-embed" }
-semfs-watch = { path = "../semfs-watch" }
 tree-sitter = { workspace = true }
 tree-sitter-rust = { workspace = true }
 tree-sitter-python = { workspace = true }

@@ -10,7 +10,7 @@ pub enum FsEvent {
 }
 
 impl FsEvent {
-    pub fn path(&self) -> &PathBuf {
+    pub fn path(&self) -> &std::path::Path {
         match self {
             FsEvent::Created(p) | FsEvent::Modified(p) | FsEvent::Deleted(p) => p,
             FsEvent::Renamed { to, .. } => to,

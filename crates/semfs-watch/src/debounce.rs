@@ -19,7 +19,7 @@ impl EventDebouncer {
 
     /// Add an event to the debouncer. Returns None if debouncing, Some(batch) if ready.
     pub fn add_event(&mut self, event: FsEvent) -> Option<EventBatch> {
-        let path = event.path().clone();
+        let path = event.path().to_path_buf();
         self.pending.insert(path, (event, Instant::now()));
         self.flush_ready()
     }

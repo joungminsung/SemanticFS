@@ -69,7 +69,11 @@ impl CodeChunker {
         let kind = node.kind();
 
         if let Some(chunk_type) = Self::node_to_chunk_type(kind) {
-            let content = node.utf8_text(source).unwrap_or("").to_string();
+            let content = if chunk_type == ChunkType::Module {
+                String::new() // Don't duplicate entire file content
+            } else {
+                node.utf8_text(source).unwrap_or("").to_string()
+            };
 
             // Skip empty or very small nodes
             if content.trim().len() < 5 && chunk_type != ChunkType::Module {

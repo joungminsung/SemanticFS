@@ -8,16 +8,13 @@ description = "Embedding abstraction for SemanticFS: Ollama and ONNX providers"
 [features]
 default = ["ollama"]
 ollama = ["reqwest"]
-onnx = ["ort", "ndarray"]
+onnx = []
 
 [dependencies]
 reqwest = { workspace = true, optional = true }
-ort = { workspace = true, optional = true }
-ndarray = { version = "0.16", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
 

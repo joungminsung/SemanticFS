@@ -30,7 +30,6 @@ fuser = "0.14"
 
 # File watching
 notify = "6.1"
-notify-debouncer-full = "0.3"
 
 # Parsing
 tree-sitter = "0.24"

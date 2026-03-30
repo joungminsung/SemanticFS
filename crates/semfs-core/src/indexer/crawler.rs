@@ -57,15 +57,13 @@ fn should_ignore(name: &str, path: &Path, patterns: &[String]) -> bool {
 
     let path_str = path.to_string_lossy();
     for pattern in patterns {
-        if pattern.starts_with("*.") {
-            // Wildcard extension match: "*.lock" matches "Cargo.lock", "package-lock.json" containing "lock"
-            let ext = &pattern[2..]; // "lock"
-            // Match files that contain this as extension or in name
-            if name.contains(ext) {
+        if let Some(ext) = pattern.strip_prefix("*.") {
+            // Wildcard extension match: "*.lock" matches files ending in ".lock"
+            // "lock"
+            if name.ends_with(&format!(".{}", ext)) {
                 return true;
             }
-        } else if pattern.starts_with('*') {
-            let suffix = &pattern[1..];
+        } else if let Some(suffix) = pattern.strip_prefix('*') {
             if name.ends_with(suffix) {
                 return true;
             }
@@ -85,7 +83,9 @@ mod tests {
     fn test_should_ignore() {
         assert!(should_ignore(".git", Path::new("/repo/.git"), &[]));
         assert!(should_ignore("node_modules", Path::new("/repo/node_modules"), &["node_modules".to_string()]));
-        assert!(should_ignore("package-lock.json", Path::new("/repo/package-lock.json"), &["*.lock".to_string()]));
+        assert!(should_ignore("Cargo.lock", Path::new("/repo/Cargo.lock"), &["*.lock".to_string()]));
+        assert!(!should_ignore("package-lock.json", Path::new("/repo/package-lock.json"), &["*.lock".to_string()]));
+        assert!(!should_ignore("clock.rs", Path::new("/repo/clock.rs"), &["*.lock".to_string()]));
         assert!(!should_ignore("src", Path::new("/repo/src"), &["node_modules".to_string()]));
     }
 }

@@ -71,30 +71,56 @@ fn diagnose_index(
 fn diagnose_query(
     config: &AppConfig,
     _data_dir: &std::path::Path,
-    _as_json: bool,
+    as_json: bool,
 ) -> Result<()> {
-    println!("Query Diagnostics");
-    println!("-----------------");
-    println!("  Alpha (semantic weight): {}", config.search.alpha);
-    println!("  Max results:             {}", config.search.max_results);
-    println!("  Cache size:              {}", config.search.cache_size);
+    let (embedder_name, embedder_dims, embedder_error) =
+        match semfs_embed::auto_detect_embedder() {
+            Ok(embedder) => (
+                Some(embedder.model_name().to_string()),
+                Some(embedder.dimensions()),
+                None,
+            ),
+            Err(e) => (None, None, Some(e.to_string())),
+        };
 
-    // Check embedder availability
-    match semfs_embed::auto_detect_embedder() {
-        Ok(embedder) => {
-            println!(
-                "  Embedder:                {} (dims: {})",
-                embedder.model_name(),
-                embedder.dimensions()
-            );
-            if embedder.dimensions() == 0 {
-                println!(
-                    "  WARNING: No embedding model available. Using keyword-only search."
-                );
+    if as_json {
+        let mut info = serde_json::json!({
+            "alpha": config.search.alpha,
+            "max_results": config.search.max_results,
+            "cache_size": config.search.cache_size,
+        });
+        if let Some(name) = &embedder_name {
+            info["embedder_model"] = serde_json::json!(name);
+            info["embedder_dimensions"] = serde_json::json!(embedder_dims.unwrap_or(0));
+            if embedder_dims == Some(0) {
+                info["warning"] = serde_json::json!("No embedding model available. Using keyword-only search.");
             }
         }
-        Err(e) => {
-            println!("  Embedder:                ERROR - {}", e);
+        if let Some(err) = &embedder_error {
+            info["embedder_error"] = serde_json::json!(err);
+        }
+        println!("{}", serde_json::to_string_pretty(&info)?);
+    } else {
+        println!("Query Diagnostics");
+        println!("-----------------");
+        println!("  Alpha (semantic weight): {}", config.search.alpha);
+        println!("  Max results:             {}", config.search.max_results);
+        println!("  Cache size:              {}", config.search.cache_size);
+
+        match (&embedder_name, &embedder_error) {
+            (Some(name), _) => {
+                let dims = embedder_dims.unwrap_or(0);
+                println!("  Embedder:                {} (dims: {})", name, dims);
+                if dims == 0 {
+                    println!(
+                        "  WARNING: No embedding model available. Using keyword-only search."
+                    );
+                }
+            }
+            (_, Some(e)) => {
+                println!("  Embedder:                ERROR - {}", e);
+            }
+            _ => {}
         }
     }
 

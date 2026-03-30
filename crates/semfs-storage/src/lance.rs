@@ -9,11 +9,12 @@ use tracing::{debug, info};
 ///
 /// Default: in-memory brute-force search (no external dependencies).
 /// With `lancedb-backend` feature: backed by LanceDB for ANN search at scale.
+type EmbeddingData = HashMap<FileId, Vec<(ChunkId, Vec<f32>)>>;
+
 pub struct LanceStore {
     dimensions: usize,
-    // In-memory store: file_id -> Vec<(chunk_id, vector)>
-    data: RwLock<HashMap<FileId, Vec<(ChunkId, Vec<f32>)>>>,
-    db_path: std::path::PathBuf,
+    data: RwLock<EmbeddingData>,
+    _db_path: std::path::PathBuf,
 }
 
 impl LanceStore {
@@ -23,7 +24,7 @@ impl LanceStore {
         Ok(Self {
             dimensions,
             data: RwLock::new(HashMap::new()),
-            db_path: path.to_path_buf(),
+            _db_path: path.to_path_buf(),
         })
     }
 
@@ -43,7 +44,7 @@ impl LanceStore {
         let mut data = self.data.write();
         for emb in embeddings {
             data.entry(emb.file_id)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push((emb.chunk_id, emb.vector.clone()));
         }
 
