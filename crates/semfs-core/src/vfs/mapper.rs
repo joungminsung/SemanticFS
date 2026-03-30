@@ -22,7 +22,11 @@ pub struct VfsEntry {
 
 impl VfsMapper {
     pub fn new(retriever: HybridRetriever, source_root: PathBuf, max_results: usize) -> Self {
-        Self { retriever, source_root, max_results }
+        Self {
+            retriever,
+            source_root,
+            max_results,
+        }
     }
 
     /// Resolve a semantic path to a list of virtual entries
@@ -30,7 +34,8 @@ impl VfsMapper {
         let query = parse_query(semantic_path);
         let results = self.retriever.search(&query, self.max_results)?;
 
-        let entries: Vec<VfsEntry> = results.into_iter()
+        let entries: Vec<VfsEntry> = results
+            .into_iter()
             .filter_map(|result| {
                 let real_path = &result.path;
                 if real_path.exists() {
@@ -47,18 +52,15 @@ impl VfsMapper {
             })
             .collect();
 
-        debug!(
-            query = semantic_path,
-            count = entries.len(),
-            "VFS readdir"
-        );
+        debug!(query = semantic_path, count = entries.len(), "VFS readdir");
         Ok(entries)
     }
 
     /// Resolve a semantic path + filename to a real file path
     pub fn resolve_file(&self, semantic_path: &str, filename: &str) -> Result<Option<PathBuf>> {
         let entries = self.readdir(semantic_path)?;
-        Ok(entries.into_iter()
+        Ok(entries
+            .into_iter()
             .find(|e| e.name == filename)
             .map(|e| e.real_path))
     }

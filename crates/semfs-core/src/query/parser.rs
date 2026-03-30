@@ -40,7 +40,30 @@ pub fn parse_query(input: &str) -> ParsedQuery {
     // Clean up remaining text as semantic query
     let semantic_query = text
         .split_whitespace()
-        .filter(|w| !["중", "에서", "관련", "파일", "있는", "포함된", "작성한", "만든", "에", "의", "을", "를", "이", "가", "은", "는", "으로", "동안", "수정한"].contains(w))
+        .filter(|w| {
+            ![
+                "중",
+                "에서",
+                "관련",
+                "파일",
+                "있는",
+                "포함된",
+                "작성한",
+                "만든",
+                "에",
+                "의",
+                "을",
+                "를",
+                "이",
+                "가",
+                "은",
+                "는",
+                "으로",
+                "동안",
+                "수정한",
+            ]
+            .contains(w)
+        })
         .collect::<Vec<_>>()
         .join(" ")
         .trim()

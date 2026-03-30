@@ -416,7 +416,7 @@ impl Filesystem for SemanticFilesystem {
         } else {
             // TODO: WAL does not support partial writes yet; fall back to direct I/O
             warn!(offset, path = %real_path.display(), "Partial write without WAL protection");
-            use std::io::{Write as IoWrite, Seek, SeekFrom};
+            use std::io::{Seek, SeekFrom, Write as IoWrite};
 
             let mut file = match std::fs::OpenOptions::new().write(true).open(&real_path) {
                 Ok(f) => f,

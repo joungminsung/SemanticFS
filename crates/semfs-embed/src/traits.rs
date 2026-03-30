@@ -19,8 +19,8 @@ pub trait Embedder: Send + Sync {
 
 /// Provider selection based on available resources
 pub enum EmbedderProvider {
-    Ollama(String),   // model name
-    Onnx(String),     // model path
+    Ollama(String), // model name
+    Onnx(String),   // model path
     Noop,
 }
 
@@ -36,16 +36,12 @@ pub fn create_embedder(provider: EmbedderProvider) -> Result<Box<dyn Embedder>> 
             anyhow::bail!("Ollama support not compiled. Enable the 'ollama' feature.")
         }
         #[cfg(feature = "onnx")]
-        EmbedderProvider::Onnx(path) => {
-            Ok(Box::new(crate::onnx::OnnxEmbedder::new(&path)?))
-        }
+        EmbedderProvider::Onnx(path) => Ok(Box::new(crate::onnx::OnnxEmbedder::new(&path)?)),
         #[cfg(not(feature = "onnx"))]
         EmbedderProvider::Onnx(_) => {
             anyhow::bail!("ONNX support not compiled. Enable the 'onnx' feature.")
         }
-        EmbedderProvider::Noop => {
-            Ok(Box::new(crate::noop::NoopEmbedder::new()))
-        }
+        EmbedderProvider::Noop => Ok(Box::new(crate::noop::NoopEmbedder::new())),
     }
 }
 

@@ -6,6 +6,6 @@ pub mod vfs;
 
 pub use error::{CoreError, Result};
 pub use indexer::{IndexingPipeline, IndexingStats};
-pub use query::{ParsedQuery, parse_query};
+pub use query::{parse_query, ParsedQuery};
 pub use retriever::HybridRetriever;
 pub use vfs::{VfsEntry, VfsMapper, WriteHandler};

@@ -26,9 +26,10 @@ pub fn get_chunker(path: &std::path::Path) -> Option<Box<dyn Chunker>> {
 }
 
 fn is_likely_text(path: &std::path::Path) -> bool {
-    let text_extensions = ["json", "yaml", "yml", "toml", "xml", "html", "css",
-                           "scss", "less", "sql", "sh", "bash", "zsh", "fish",
-                           "env", "cfg", "ini", "conf", "csv", "tsv", "log"];
+    let text_extensions = [
+        "json", "yaml", "yml", "toml", "xml", "html", "css", "scss", "less", "sql", "sh", "bash",
+        "zsh", "fish", "env", "cfg", "ini", "conf", "csv", "tsv", "log",
+    ];
     path.extension()
         .and_then(|e| e.to_str())
         .map(|ext| text_extensions.contains(&ext))

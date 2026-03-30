@@ -2,7 +2,7 @@ use crate::error::{CoreError, Result};
 use semfs_storage::{FileOperation, WalStore};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::{error, info};
 
 /// Handles write operations with WAL protection
 pub struct WriteHandler {
@@ -77,8 +77,13 @@ impl WriteHandler {
             .join("trash");
         std::fs::create_dir_all(&trash_dir)?;
 
-        let trash_name = format!("{}_{}", chrono::Utc::now().timestamp(),
-            path.file_name().and_then(|n| n.to_str()).unwrap_or("unknown"));
+        let trash_name = format!(
+            "{}_{}",
+            chrono::Utc::now().timestamp(),
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("unknown")
+        );
         let trash_path = trash_dir.join(trash_name);
 
         match std::fs::rename(path, &trash_path) {

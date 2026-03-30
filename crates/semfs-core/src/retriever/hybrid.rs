@@ -3,7 +3,7 @@ use super::rrf::reciprocal_rank_fusion;
 use super::semantic::SemanticRetriever;
 use crate::error::Result;
 use crate::query::types::{ParsedQuery, SortOrder};
-use semfs_storage::{SearchResult, SqliteStore, MetadataFilter};
+use semfs_storage::{MetadataFilter, SearchResult, SqliteStore};
 use std::sync::Arc;
 use tracing::debug;
 
@@ -35,7 +35,9 @@ impl HybridRetriever {
         let search_limit = top_k * 3; // Over-fetch for re-ranking
 
         // 1. Apply metadata filters to narrow candidates
-        let metadata_filters: Vec<MetadataFilter> = query.filters.iter()
+        let metadata_filters: Vec<MetadataFilter> = query
+            .filters
+            .iter()
             .map(|f| f.to_metadata_filter())
             .collect();
 
@@ -65,10 +67,7 @@ impl HybridRetriever {
         let mut fused = if semantic_results.is_empty() {
             keyword_results
         } else {
-            reciprocal_rank_fusion(
-                &[semantic_results, keyword_results],
-                self.rrf_k,
-            )
+            reciprocal_rank_fusion(&[semantic_results, keyword_results], self.rrf_k)
         };
 
         // 5. Filter by metadata results if applicable
@@ -77,10 +76,11 @@ impl HybridRetriever {
         }
 
         // 6. Take top_k and resolve to SearchResult
-        let results: Vec<SearchResult> = fused.into_iter()
+        let results: Vec<SearchResult> = fused
+            .into_iter()
             .take(top_k)
-            .filter_map(|(file_id, score)| {
-                match self.metadata_store.get_file(file_id) {
+            .filter_map(
+                |(file_id, score)| match self.metadata_store.get_file(file_id) {
                     Ok(meta) => Some(SearchResult {
                         file_id,
                         path: meta.path,
@@ -89,8 +89,8 @@ impl HybridRetriever {
                         matched_chunks: Vec::new(),
                     }),
                     Err(_) => None,
-                }
-            })
+                },
+            )
             .collect();
 
         // Apply sort order
@@ -101,15 +101,31 @@ impl HybridRetriever {
             SortOrder::NameDesc => results.sort_by(|a, b| b.name.cmp(&a.name)),
             SortOrder::DateDesc => {
                 results.sort_by(|a, b| {
-                    let a_time = self.metadata_store.get_file(a.file_id).map(|f| f.modified_at).unwrap_or(0);
-                    let b_time = self.metadata_store.get_file(b.file_id).map(|f| f.modified_at).unwrap_or(0);
+                    let a_time = self
+                        .metadata_store
+                        .get_file(a.file_id)
+                        .map(|f| f.modified_at)
+                        .unwrap_or(0);
+                    let b_time = self
+                        .metadata_store
+                        .get_file(b.file_id)
+                        .map(|f| f.modified_at)
+                        .unwrap_or(0);
                     b_time.cmp(&a_time)
                 });
             }
             SortOrder::DateAsc => {
                 results.sort_by(|a, b| {
-                    let a_time = self.metadata_store.get_file(a.file_id).map(|f| f.modified_at).unwrap_or(0);
-                    let b_time = self.metadata_store.get_file(b.file_id).map(|f| f.modified_at).unwrap_or(0);
+                    let a_time = self
+                        .metadata_store
+                        .get_file(a.file_id)
+                        .map(|f| f.modified_at)
+                        .unwrap_or(0);
+                    let b_time = self
+                        .metadata_store
+                        .get_file(b.file_id)
+                        .map(|f| f.modified_at)
+                        .unwrap_or(0);
                     a_time.cmp(&b_time)
                 });
             }

@@ -1,5 +1,5 @@
-pub mod traits;
 pub mod noop;
+pub mod traits;
 
 #[cfg(feature = "ollama")]
 pub mod ollama;
@@ -8,4 +8,4 @@ pub mod ollama;
 pub mod onnx;
 
 pub use noop::NoopEmbedder;
-pub use traits::{Embedder, EmbedderProvider, auto_detect_embedder, create_embedder};
+pub use traits::{auto_detect_embedder, create_embedder, Embedder, EmbedderProvider};

@@ -1,7 +1,7 @@
 /// Reciprocal Rank Fusion: merge multiple ranked lists
 /// RRF_score(d) = Sigma 1 / (k + rank_i(d))
 pub fn reciprocal_rank_fusion(
-    ranked_lists: &[Vec<(i64, f32)>],  // Each list: (file_id, score)
+    ranked_lists: &[Vec<(i64, f32)>], // Each list: (file_id, score)
     k: f32,
 ) -> Vec<(i64, f32)> {
     use std::collections::HashMap;

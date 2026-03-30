@@ -27,7 +27,9 @@ impl EventDebouncer {
     /// Check for events that have been debounced long enough
     pub fn flush_ready(&mut self) -> Option<EventBatch> {
         let now = Instant::now();
-        let ready: Vec<PathBuf> = self.pending.iter()
+        let ready: Vec<PathBuf> = self
+            .pending
+            .iter()
             .filter(|(_, (_, ts))| now.duration_since(*ts) >= self.debounce_duration)
             .map(|(path, _)| path.clone())
             .collect();
@@ -36,7 +38,8 @@ impl EventDebouncer {
             return None;
         }
 
-        let events: Vec<FsEvent> = ready.iter()
+        let events: Vec<FsEvent> = ready
+            .iter()
             .filter_map(|path| self.pending.remove(path))
             .map(|(event, _)| event)
             .collect();
@@ -50,9 +53,7 @@ impl EventDebouncer {
             return None;
         }
 
-        let events: Vec<FsEvent> = self.pending.drain()
-            .map(|(_, (event, _))| event)
-            .collect();
+        let events: Vec<FsEvent> = self.pending.drain().map(|(_, (event, _))| event).collect();
 
         Some(EventBatch::new(events))
     }

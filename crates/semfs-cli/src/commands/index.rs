@@ -15,9 +15,7 @@ pub fn execute(source: PathBuf, full: bool) -> Result<()> {
     let data_dir = AppConfig::config_dir();
     std::fs::create_dir_all(&data_dir)?;
 
-    let sqlite = std::sync::Arc::new(semfs_storage::SqliteStore::new(
-        &data_dir.join("index.db"),
-    )?);
+    let sqlite = std::sync::Arc::new(semfs_storage::SqliteStore::new(&data_dir.join("index.db"))?);
     let lance = std::sync::Arc::new(semfs_storage::LanceStore::new(
         &data_dir.join("vectors.lance"),
         config.embedding.dimensions,

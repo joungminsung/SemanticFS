@@ -79,7 +79,15 @@ pub fn extract_extension_filter(text: &str) -> Option<(QueryFilter, String)> {
         (r"(?i)Rust", vec!["rs".to_string()]),
         (r"(?i)Go\b", vec!["go".to_string()]),
         (r"(?i)Java\b", vec!["java".to_string()]),
-        (r"(?i)C\+\+", vec!["cpp".to_string(), "cc".to_string(), "cxx".to_string(), "hpp".to_string()]),
+        (
+            r"(?i)C\+\+",
+            vec![
+                "cpp".to_string(),
+                "cc".to_string(),
+                "cxx".to_string(),
+                "hpp".to_string(),
+            ],
+        ),
         (r"(?i)C#|C\s*Sharp", vec!["cs".to_string()]),
         (r"(?i)Ruby", vec!["rb".to_string()]),
         (r"(?i)PHP", vec!["php".to_string()]),
@@ -91,7 +99,16 @@ pub fn extract_extension_filter(text: &str) -> Option<(QueryFilter, String)> {
         (r"(?i)YAML|YML", vec!["yaml".to_string(), "yml".to_string()]),
         (r"(?i)TOML", vec!["toml".to_string()]),
         (r"(?i)CSV", vec!["csv".to_string()]),
-        (r"(?i)이미지|image|사진|photo", vec!["png".to_string(), "jpg".to_string(), "jpeg".to_string(), "webp".to_string(), "gif".to_string()]),
+        (
+            r"(?i)이미지|image|사진|photo",
+            vec![
+                "png".to_string(),
+                "jpg".to_string(),
+                "jpeg".to_string(),
+                "webp".to_string(),
+                "gif".to_string(),
+            ],
+        ),
         (r"(?i)PDF", vec!["pdf".to_string()]),
     ];
 
@@ -101,8 +118,7 @@ pub fn extract_extension_filter(text: &str) -> Option<(QueryFilter, String)> {
         let re = Regex::new(pattern).unwrap();
         if re.is_match(text) {
             let cleaned = re.replace(text, "").trim().to_string();
-            let cleaned = cleanup_re
-                .replace_all(&cleaned, " ").trim().to_string();
+            let cleaned = cleanup_re.replace_all(&cleaned, " ").trim().to_string();
             debug!(extensions = ?exts, "Extracted extension filter");
             return Some((QueryFilter::Extension(exts), cleaned));
         }

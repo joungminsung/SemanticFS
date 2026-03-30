@@ -82,10 +82,30 @@ mod tests {
     #[test]
     fn test_should_ignore() {
         assert!(should_ignore(".git", Path::new("/repo/.git"), &[]));
-        assert!(should_ignore("node_modules", Path::new("/repo/node_modules"), &["node_modules".to_string()]));
-        assert!(should_ignore("Cargo.lock", Path::new("/repo/Cargo.lock"), &["*.lock".to_string()]));
-        assert!(!should_ignore("package-lock.json", Path::new("/repo/package-lock.json"), &["*.lock".to_string()]));
-        assert!(!should_ignore("clock.rs", Path::new("/repo/clock.rs"), &["*.lock".to_string()]));
-        assert!(!should_ignore("src", Path::new("/repo/src"), &["node_modules".to_string()]));
+        assert!(should_ignore(
+            "node_modules",
+            Path::new("/repo/node_modules"),
+            &["node_modules".to_string()]
+        ));
+        assert!(should_ignore(
+            "Cargo.lock",
+            Path::new("/repo/Cargo.lock"),
+            &["*.lock".to_string()]
+        ));
+        assert!(!should_ignore(
+            "package-lock.json",
+            Path::new("/repo/package-lock.json"),
+            &["*.lock".to_string()]
+        ));
+        assert!(!should_ignore(
+            "clock.rs",
+            Path::new("/repo/clock.rs"),
+            &["*.lock".to_string()]
+        ));
+        assert!(!should_ignore(
+            "src",
+            Path::new("/repo/src"),
+            &["node_modules".to_string()]
+        ));
     }
 }

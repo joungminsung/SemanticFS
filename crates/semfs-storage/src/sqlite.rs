@@ -31,7 +31,8 @@ impl SqliteStore {
 
     fn initialize(&self) -> Result<()> {
         let conn = self.conn.lock();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = NORMAL;
             PRAGMA foreign_keys = ON;
@@ -78,7 +79,8 @@ impl SqliteStore {
                 permission TEXT NOT NULL,
                 mount_point TEXT NOT NULL
             );
-        ")?;
+        ",
+        )?;
         info!("SQLite schema initialized");
         Ok(())
     }
@@ -209,26 +211,34 @@ impl SqliteStore {
         let mut stmt = conn.prepare(
             "SELECT id, path, name, extension, size, hash, created_at, modified_at, indexed_at, mime_type FROM files"
         )?;
-        let files = stmt.query_map([], |row| {
-            Ok(FileMeta {
-                id: Some(row.get(0)?),
-                path: std::path::PathBuf::from(row.get::<_, String>(1)?),
-                name: row.get(2)?,
-                extension: row.get(3)?,
-                size: row.get::<_, i64>(4)? as u64,
-                hash: row.get(5)?,
-                created_at: row.get(6)?,
-                modified_at: row.get(7)?,
-                indexed_at: row.get(8)?,
-                mime_type: row.get(9)?,
-            })
-        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        let files = stmt
+            .query_map([], |row| {
+                Ok(FileMeta {
+                    id: Some(row.get(0)?),
+                    path: std::path::PathBuf::from(row.get::<_, String>(1)?),
+                    name: row.get(2)?,
+                    extension: row.get(3)?,
+                    size: row.get::<_, i64>(4)? as u64,
+                    hash: row.get(5)?,
+                    created_at: row.get(6)?,
+                    modified_at: row.get(7)?,
+                    indexed_at: row.get(8)?,
+                    mime_type: row.get(9)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(files)
     }
 
     // -- FTS operations --
 
-    pub fn index_content(&self, file_id: FileId, name: &str, path: &str, content: &str) -> Result<()> {
+    pub fn index_content(
+        &self,
+        file_id: FileId,
+        name: &str,
+        path: &str,
+        content: &str,
+    ) -> Result<()> {
         let conn = self.conn.lock();
         // Delete existing FTS entry
         conn.execute("DELETE FROM files_fts WHERE rowid=?1", params![file_id])?;
@@ -243,11 +253,13 @@ impl SqliteStore {
     pub fn search_fts(&self, query: &str) -> Result<Vec<(FileId, f64)>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
-            "SELECT rowid, rank FROM files_fts WHERE files_fts MATCH ?1 ORDER BY rank LIMIT 100"
+            "SELECT rowid, rank FROM files_fts WHERE files_fts MATCH ?1 ORDER BY rank LIMIT 100",
         )?;
-        let results = stmt.query_map(params![query], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?))
-        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        let results = stmt
+            .query_map(params![query], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(results)
     }
 
@@ -261,13 +273,18 @@ impl SqliteStore {
         for filter in filters {
             match filter {
                 MetadataFilter::DateRange { start, end } => {
-                    conditions.push(format!("modified_at >= ?{} AND modified_at <= ?{}",
-                        param_values.len() + 1, param_values.len() + 2));
+                    conditions.push(format!(
+                        "modified_at >= ?{} AND modified_at <= ?{}",
+                        param_values.len() + 1,
+                        param_values.len() + 2
+                    ));
                     param_values.push(Box::new(*start));
                     param_values.push(Box::new(*end));
                 }
                 MetadataFilter::Extension(exts) => {
-                    let placeholders: Vec<String> = exts.iter().enumerate()
+                    let placeholders: Vec<String> = exts
+                        .iter()
+                        .enumerate()
                         .map(|(i, _)| format!("?{}", param_values.len() + i + 1))
                         .collect();
                     conditions.push(format!("extension IN ({})", placeholders.join(",")));
@@ -286,7 +303,9 @@ impl SqliteStore {
                     }
                 }
                 MetadataFilter::MimeType(types) => {
-                    let placeholders: Vec<String> = types.iter().enumerate()
+                    let placeholders: Vec<String> = types
+                        .iter()
+                        .enumerate()
                         .map(|(i, _)| format!("?{}", param_values.len() + i + 1))
                         .collect();
                     conditions.push(format!("mime_type IN ({})", placeholders.join(",")));
@@ -296,7 +315,10 @@ impl SqliteStore {
                 }
                 MetadataFilter::PathPrefix(prefix) => {
                     conditions.push(format!("path LIKE ?{} ESCAPE '\\'", param_values.len() + 1));
-                    let escaped = prefix.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+                    let escaped = prefix
+                        .replace('\\', "\\\\")
+                        .replace('%', "\\%")
+                        .replace('_', "\\_");
                     param_values.push(Box::new(format!("{}%", escaped)));
                 }
             }
@@ -310,10 +332,11 @@ impl SqliteStore {
 
         let sql = format!("SELECT id FROM files {}", where_clause);
         let mut stmt = conn.prepare(&sql)?;
-        let params_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
-        let ids = stmt.query_map(params_refs.as_slice(), |row| {
-            row.get::<_, i64>(0)
-        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+        let ids = stmt
+            .query_map(params_refs.as_slice(), |row| row.get::<_, i64>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(ids)
     }
 
@@ -343,19 +366,21 @@ impl SqliteStore {
             "SELECT id, file_id, chunk_index, parent_chunk_id, content, chunk_type, start_line, end_line
              FROM chunks WHERE file_id=?1 ORDER BY chunk_index"
         )?;
-        let chunks = stmt.query_map(params![file_id], |row| {
-            Ok(Chunk {
-                id: Some(row.get(0)?),
-                file_id: row.get(1)?,
-                chunk_index: row.get::<_, i64>(2)? as usize,
-                parent_chunk_id: row.get(3)?,
-                content: row.get(4)?,
-                chunk_type: ChunkType::from_str_lossy(&row.get::<_, String>(5)?),
-                start_line: row.get::<_, Option<i64>>(6)?.map(|l| l as usize),
-                end_line: row.get::<_, Option<i64>>(7)?.map(|l| l as usize),
-                metadata: std::collections::HashMap::new(),
-            })
-        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        let chunks = stmt
+            .query_map(params![file_id], |row| {
+                Ok(Chunk {
+                    id: Some(row.get(0)?),
+                    file_id: row.get(1)?,
+                    chunk_index: row.get::<_, i64>(2)? as usize,
+                    parent_chunk_id: row.get(3)?,
+                    content: row.get(4)?,
+                    chunk_type: ChunkType::from_str_lossy(&row.get::<_, String>(5)?),
+                    start_line: row.get::<_, Option<i64>>(6)?.map(|l| l as usize),
+                    end_line: row.get::<_, Option<i64>>(7)?.map(|l| l as usize),
+                    metadata: std::collections::HashMap::new(),
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(chunks)
     }
 
@@ -384,23 +409,25 @@ impl SqliteStore {
     pub fn get_acl_rules(&self, mount_point: &str) -> Result<Vec<AclRule>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, pattern, permission, mount_point FROM acl_rules WHERE mount_point=?1"
+            "SELECT id, pattern, permission, mount_point FROM acl_rules WHERE mount_point=?1",
         )?;
-        let rules = stmt.query_map(params![mount_point], |row| {
-            let perm_str: String = row.get(2)?;
-            let permission = match perm_str.as_str() {
-                "read" => Permission::Read,
-                "write" => Permission::Write,
-                "deny" => Permission::Deny,
-                _ => Permission::Read,
-            };
-            Ok(AclRule {
-                id: Some(row.get(0)?),
-                pattern: row.get(1)?,
-                permission,
-                mount_point: row.get(3)?,
-            })
-        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+        let rules = stmt
+            .query_map(params![mount_point], |row| {
+                let perm_str: String = row.get(2)?;
+                let permission = match perm_str.as_str() {
+                    "read" => Permission::Read,
+                    "write" => Permission::Write,
+                    "deny" => Permission::Deny,
+                    _ => Permission::Read,
+                };
+                Ok(AclRule {
+                    id: Some(row.get(0)?),
+                    pattern: row.get(1)?,
+                    permission,
+                    mount_point: row.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
         Ok(rules)
     }
 
@@ -446,7 +473,14 @@ mod tests {
         let store = SqliteStore::in_memory().unwrap();
         let meta = test_meta();
         let id = store.insert_file(&meta).unwrap();
-        store.index_content(id, "file.rs", "/test/file.rs", "fn main() { println!(\"hello\"); }").unwrap();
+        store
+            .index_content(
+                id,
+                "file.rs",
+                "/test/file.rs",
+                "fn main() { println!(\"hello\"); }",
+            )
+            .unwrap();
         let results = store.search_fts("main").unwrap();
         assert!(!results.is_empty());
         assert_eq!(results[0].0, id);
@@ -458,10 +492,14 @@ mod tests {
         let meta = test_meta();
         store.insert_file(&meta).unwrap();
 
-        let results = store.filter_by(&[MetadataFilter::Extension(vec!["rs".to_string()])]).unwrap();
+        let results = store
+            .filter_by(&[MetadataFilter::Extension(vec!["rs".to_string()])])
+            .unwrap();
         assert_eq!(results.len(), 1);
 
-        let results = store.filter_by(&[MetadataFilter::Extension(vec!["py".to_string()])]).unwrap();
+        let results = store
+            .filter_by(&[MetadataFilter::Extension(vec!["py".to_string()])])
+            .unwrap();
         assert_eq!(results.len(), 0);
     }
 

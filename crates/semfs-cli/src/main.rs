@@ -114,7 +114,9 @@ fn main() {
             read_only,
         } => {
             #[cfg(feature = "fuse")]
-            { commands::mount::execute(source, mountpoint, model, read_only) }
+            {
+                commands::mount::execute(source, mountpoint, model, read_only)
+            }
             #[cfg(not(feature = "fuse"))]
             {
                 let _ = (source, mountpoint, model, read_only);
@@ -127,11 +129,15 @@ fn main() {
         }
         Commands::Unmount { mountpoint } => {
             #[cfg(feature = "fuse")]
-            { commands::unmount::execute(mountpoint) }
+            {
+                commands::unmount::execute(mountpoint)
+            }
             #[cfg(not(feature = "fuse"))]
             {
                 let _ = mountpoint;
-                Err(anyhow::anyhow!("FUSE support not compiled. Rebuild with --features semfs-cli/fuse"))
+                Err(anyhow::anyhow!(
+                    "FUSE support not compiled. Rebuild with --features semfs-cli/fuse"
+                ))
             }
         }
         Commands::Index { source, full } => commands::index::execute(source, full),
@@ -145,14 +151,10 @@ fn main() {
         Commands::Reindex { source } => {
             let source = source.unwrap_or_else(|| {
                 let cfg = config::AppConfig::load();
-                cfg.source
-                    .paths
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        eprintln!("Error: No source path provided and none configured.");
-                        std::process::exit(1);
-                    })
+                cfg.source.paths.first().cloned().unwrap_or_else(|| {
+                    eprintln!("Error: No source path provided and none configured.");
+                    std::process::exit(1);
+                })
             });
             commands::index::execute(source, true)
         }

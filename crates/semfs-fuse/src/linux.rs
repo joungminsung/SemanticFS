@@ -48,12 +48,8 @@ impl LinuxFuseProvider {
             mount_options.push(MountOption::RO);
         }
 
-        let fs = SemanticFilesystem::new(
-            vfs,
-            write_handler,
-            source.to_path_buf(),
-            options.read_only,
-        );
+        let fs =
+            SemanticFilesystem::new(vfs, write_handler, source.to_path_buf(), options.read_only);
 
         fuser::mount2(fs, mountpoint, &mount_options)?;
 

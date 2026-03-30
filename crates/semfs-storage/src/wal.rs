@@ -31,7 +31,8 @@ impl WalStore {
 
     fn initialize(&self) -> Result<()> {
         let conn = self.conn.lock();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             PRAGMA journal_mode = WAL;
             PRAGMA synchronous = FULL;
 
@@ -46,7 +47,8 @@ impl WalStore {
             );
 
             CREATE INDEX IF NOT EXISTS idx_wal_status ON wal_entries(status);
-        ")?;
+        ",
+        )?;
         info!("WAL store initialized");
         Ok(())
     }
@@ -55,10 +57,20 @@ impl WalStore {
         let conn = self.conn.lock();
         let now = chrono::Utc::now().timestamp();
         let (op_type, source, dest) = match op {
-            FileOperation::Move { source, dest } => ("move", source.to_string_lossy().to_string(), Some(dest.to_string_lossy().to_string())),
-            FileOperation::Copy { source, dest } => ("copy", source.to_string_lossy().to_string(), Some(dest.to_string_lossy().to_string())),
+            FileOperation::Move { source, dest } => (
+                "move",
+                source.to_string_lossy().to_string(),
+                Some(dest.to_string_lossy().to_string()),
+            ),
+            FileOperation::Copy { source, dest } => (
+                "copy",
+                source.to_string_lossy().to_string(),
+                Some(dest.to_string_lossy().to_string()),
+            ),
             FileOperation::Delete { path } => ("delete", path.to_string_lossy().to_string(), None),
-            FileOperation::Write { path, .. } => ("write", path.to_string_lossy().to_string(), None),
+            FileOperation::Write { path, .. } => {
+                ("write", path.to_string_lossy().to_string(), None)
+            }
         };
         conn.execute(
             "INSERT INTO wal_entries (operation, source_path, dest_path, status, created_at)
@@ -104,44 +116,56 @@ impl WalStore {
         let mut stmt = conn.prepare(
             "SELECT id, operation, source_path, dest_path, status, created_at, completed_at
              FROM wal_entries WHERE status IN ('pending', 'executing')
-             ORDER BY id ASC"
+             ORDER BY id ASC",
         )?;
-        let entries = stmt.query_map([], |row| {
-            let op_type: String = row.get(1)?;
-            let source: String = row.get(2)?;
-            let dest: Option<String> = row.get(3)?;
-            let status_str: String = row.get(4)?;
+        let entries = stmt
+            .query_map([], |row| {
+                let op_type: String = row.get(1)?;
+                let source: String = row.get(2)?;
+                let dest: Option<String> = row.get(3)?;
+                let status_str: String = row.get(4)?;
 
-            // Note: Write WAL entries are advisory-only and cannot be replayed.
-            // The file data is not persisted to the WAL table, so recovery
-            // produces an empty `data` vec. This is by design -- the WAL
-            // protects move/copy/delete atomicity, but write-data recovery
-            // requires the application to re-write.
-            let operation = match op_type.as_str() {
-                "move" => FileOperation::Move {
-                    source: source.into(),
-                    dest: dest.unwrap_or_default().into(),
-                },
-                "copy" => FileOperation::Copy {
-                    source: source.into(),
-                    dest: dest.unwrap_or_default().into(),
-                },
-                "delete" => FileOperation::Delete { path: source.into() },
-                "write" => FileOperation::Write { path: source.into(), data: Vec::new() },
-                _ => FileOperation::Delete { path: source.into() },
-            };
+                // Note: Write WAL entries are advisory-only and cannot be replayed.
+                // The file data is not persisted to the WAL table, so recovery
+                // produces an empty `data` vec. This is by design -- the WAL
+                // protects move/copy/delete atomicity, but write-data recovery
+                // requires the application to re-write.
+                let operation = match op_type.as_str() {
+                    "move" => FileOperation::Move {
+                        source: source.into(),
+                        dest: dest.unwrap_or_default().into(),
+                    },
+                    "copy" => FileOperation::Copy {
+                        source: source.into(),
+                        dest: dest.unwrap_or_default().into(),
+                    },
+                    "delete" => FileOperation::Delete {
+                        path: source.into(),
+                    },
+                    "write" => FileOperation::Write {
+                        path: source.into(),
+                        data: Vec::new(),
+                    },
+                    _ => FileOperation::Delete {
+                        path: source.into(),
+                    },
+                };
 
-            Ok(WalEntry {
-                id: row.get(0)?,
-                operation,
-                status: OperationStatus::from_str_lossy(&status_str),
-                created_at: row.get(5)?,
-                completed_at: row.get(6)?,
-            })
-        })?.collect::<std::result::Result<Vec<_>, _>>()?;
+                Ok(WalEntry {
+                    id: row.get(0)?,
+                    operation,
+                    status: OperationStatus::from_str_lossy(&status_str),
+                    created_at: row.get(5)?,
+                    completed_at: row.get(6)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
 
         if !entries.is_empty() {
-            warn!(count = entries.len(), "Found pending WAL entries for recovery");
+            warn!(
+                count = entries.len(),
+                "Found pending WAL entries for recovery"
+            );
         }
         Ok(entries)
     }
@@ -183,7 +207,9 @@ mod tests {
     #[test]
     fn test_wal_recovery() {
         let wal = WalStore::in_memory().unwrap();
-        let op1 = FileOperation::Delete { path: PathBuf::from("/x") };
+        let op1 = FileOperation::Delete {
+            path: PathBuf::from("/x"),
+        };
         let op2 = FileOperation::Copy {
             source: PathBuf::from("/a"),
             dest: PathBuf::from("/b"),

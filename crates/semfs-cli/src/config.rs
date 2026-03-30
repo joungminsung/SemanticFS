@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     #[serde(default)]
     pub source: SourceConfig,
@@ -41,7 +40,6 @@ pub struct IndexConfig {
     pub watch: bool,
     pub interval: String,
 }
-
 
 impl Default for SourceConfig {
     fn default() -> Self {

@@ -23,8 +23,8 @@ struct EmbedResponse {
 
 impl OllamaEmbedder {
     pub fn new(model: &str) -> Result<Self> {
-        let base_url = std::env::var("OLLAMA_HOST")
-            .unwrap_or_else(|_| "http://localhost:11434".to_string());
+        let base_url =
+            std::env::var("OLLAMA_HOST").unwrap_or_else(|_| "http://localhost:11434".to_string());
 
         Ok(Self {
             client: Client::builder()
@@ -63,7 +63,8 @@ impl Embedder for OllamaEmbedder {
             prompt: text.to_string(),
         };
 
-        let response = self.client
+        let response = self
+            .client
             .post(&url)
             .json(&request)
             .send()
@@ -75,10 +76,14 @@ impl Embedder for OllamaEmbedder {
             anyhow::bail!("Ollama error {}: {}", status, body);
         }
 
-        let embed_response: EmbedResponse = response.json()
+        let embed_response: EmbedResponse = response
+            .json()
             .map_err(|e| anyhow::anyhow!("Failed to parse Ollama response: {}", e))?;
 
-        let embedding = embed_response.embeddings.into_iter().next()
+        let embedding = embed_response
+            .embeddings
+            .into_iter()
+            .next()
             .ok_or_else(|| anyhow::anyhow!("Ollama returned no embeddings"))?;
 
         debug!(model = %self.model, dims = embedding.len(), "Embedded text");

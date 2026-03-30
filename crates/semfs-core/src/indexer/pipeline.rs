@@ -2,7 +2,7 @@ use crate::error::Result;
 use crate::indexer::chunker;
 use crate::indexer::crawler;
 use semfs_embed::Embedder;
-use semfs_storage::{Chunk, ChunkEmbedding, FileMeta, LanceStore, SqliteStore, CacheManager};
+use semfs_storage::{CacheManager, Chunk, ChunkEmbedding, FileMeta, LanceStore, SqliteStore};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -99,21 +99,25 @@ impl IndexingPipeline {
         let file_meta = FileMeta {
             id: None,
             path: path.to_path_buf(),
-            name: path.file_name()
+            name: path
+                .file_name()
                 .and_then(|n| n.to_str())
                 .unwrap_or("unknown")
                 .to_string(),
-            extension: path.extension()
+            extension: path
+                .extension()
                 .and_then(|e| e.to_str())
                 .map(|s| s.to_string()),
             size: metadata.len(),
             hash: hash.clone(),
-            created_at: metadata.created()
+            created_at: metadata
+                .created()
                 .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
                 .duration_since(std::time::SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs() as i64,
-            modified_at: metadata.modified()
+            modified_at: metadata
+                .modified()
                 .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
                 .duration_since(std::time::SystemTime::UNIX_EPOCH)
                 .unwrap_or_default()
@@ -136,8 +140,8 @@ impl IndexingPipeline {
         let file_id = self.sqlite.insert_file(&file_meta)?;
 
         // Index content for FTS
-        self.sqlite.index_content(file_id, &file_meta.name,
-            &path.to_string_lossy(), &content)?;
+        self.sqlite
+            .index_content(file_id, &file_meta.name, &path.to_string_lossy(), &content)?;
 
         // Chunk the file
         if let Some(chunker) = chunker::get_chunker(path) {
@@ -162,13 +166,12 @@ impl IndexingPipeline {
 
             // Generate embeddings for chunks
             if self.embedder.dimensions() > 0 {
-                let texts: Vec<&str> = chunk_data.iter()
-                    .map(|cd| cd.content.as_str())
-                    .collect();
+                let texts: Vec<&str> = chunk_data.iter().map(|cd| cd.content.as_str()).collect();
 
                 match self.embedder.embed_batch(&texts) {
                     Ok(embeddings) => {
-                        let chunk_embeddings: Vec<ChunkEmbedding> = embeddings.into_iter()
+                        let chunk_embeddings: Vec<ChunkEmbedding> = embeddings
+                            .into_iter()
                             .enumerate()
                             .map(|(i, vec)| ChunkEmbedding {
                                 chunk_id: chunk_ids[i],
@@ -243,6 +246,7 @@ fn detect_mime_type(path: &Path) -> Option<String> {
             "css" => "text/css",
             "csv" => "text/csv",
             _ => "application/octet-stream",
-        }.to_string()
+        }
+        .to_string()
     })
 }

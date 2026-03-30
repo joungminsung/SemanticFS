@@ -1,7 +1,7 @@
 use crate::debounce::EventDebouncer;
 use crate::error::{Result, WatchError};
 use crate::events::{EventBatch, FsEvent};
-use crossbeam_channel::{Receiver, Sender, bounded};
+use crossbeam_channel::{bounded, Receiver, Sender};
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,21 +59,22 @@ impl FileSystemWatcher {
         // Internal channel for raw notify events
         let (raw_tx, raw_rx) = bounded::<FsEvent>(10000);
 
-        let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
-            match res {
-                Ok(event) => {
-                    let fs_events = convert_notify_event(event);
-                    for fs_event in fs_events {
-                        if let Err(e) = raw_tx.try_send(fs_event) {
-                            warn!("Failed to send event: {}", e);
+        let mut watcher =
+            notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
+                match res {
+                    Ok(event) => {
+                        let fs_events = convert_notify_event(event);
+                        for fs_event in fs_events {
+                            if let Err(e) = raw_tx.try_send(fs_event) {
+                                warn!("Failed to send event: {}", e);
+                            }
                         }
                     }
+                    Err(e) => {
+                        error!("Watch error: {}", e);
+                    }
                 }
-                Err(e) => {
-                    error!("Watch error: {}", e);
-                }
-            }
-        })?;
+            })?;
 
         watcher.watch(path, RecursiveMode::Recursive)?;
         self.watcher = Some(watcher);

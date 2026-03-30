@@ -35,9 +35,11 @@ impl LanceStore {
 
         for emb in embeddings {
             if emb.vector.len() != self.dimensions {
-                return Err(StorageError::VectorStore(
-                    format!("Expected {} dimensions, got {}", self.dimensions, emb.vector.len()),
-                ));
+                return Err(StorageError::VectorStore(format!(
+                    "Expected {} dimensions, got {}",
+                    self.dimensions,
+                    emb.vector.len()
+                )));
             }
         }
 
@@ -54,9 +56,11 @@ impl LanceStore {
 
     pub fn search(&self, query_vector: &[f32], top_k: usize) -> Result<Vec<(FileId, f32)>> {
         if query_vector.len() != self.dimensions {
-            return Err(StorageError::VectorStore(
-                format!("Expected {} dimensions, got {}", self.dimensions, query_vector.len()),
-            ));
+            return Err(StorageError::VectorStore(format!(
+                "Expected {} dimensions, got {}",
+                self.dimensions,
+                query_vector.len()
+            )));
         }
 
         let data = self.data.read();
@@ -116,9 +120,24 @@ mod tests {
         let store = LanceStore::new(dir.path(), 3).unwrap();
 
         let embeddings = vec![
-            ChunkEmbedding { chunk_id: 1, file_id: 1, vector: vec![1.0, 0.0, 0.0], content_preview: "file1".into() },
-            ChunkEmbedding { chunk_id: 2, file_id: 2, vector: vec![0.0, 1.0, 0.0], content_preview: "file2".into() },
-            ChunkEmbedding { chunk_id: 3, file_id: 3, vector: vec![0.9, 0.1, 0.0], content_preview: "file3".into() },
+            ChunkEmbedding {
+                chunk_id: 1,
+                file_id: 1,
+                vector: vec![1.0, 0.0, 0.0],
+                content_preview: "file1".into(),
+            },
+            ChunkEmbedding {
+                chunk_id: 2,
+                file_id: 2,
+                vector: vec![0.0, 1.0, 0.0],
+                content_preview: "file2".into(),
+            },
+            ChunkEmbedding {
+                chunk_id: 3,
+                file_id: 3,
+                vector: vec![0.9, 0.1, 0.0],
+                content_preview: "file3".into(),
+            },
         ];
         store.insert(&embeddings).unwrap();
 
@@ -133,9 +152,14 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = LanceStore::new(dir.path(), 2).unwrap();
 
-        store.insert(&[
-            ChunkEmbedding { chunk_id: 1, file_id: 1, vector: vec![1.0, 0.0], content_preview: "a".into() },
-        ]).unwrap();
+        store
+            .insert(&[ChunkEmbedding {
+                chunk_id: 1,
+                file_id: 1,
+                vector: vec![1.0, 0.0],
+                content_preview: "a".into(),
+            }])
+            .unwrap();
         assert_eq!(store.count().unwrap(), 1);
 
         store.delete_by_file(1).unwrap();
@@ -147,9 +171,12 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = LanceStore::new(dir.path(), 3).unwrap();
 
-        let result = store.insert(&[
-            ChunkEmbedding { chunk_id: 1, file_id: 1, vector: vec![1.0, 0.0], content_preview: "x".into() },
-        ]);
+        let result = store.insert(&[ChunkEmbedding {
+            chunk_id: 1,
+            file_id: 1,
+            vector: vec![1.0, 0.0],
+            content_preview: "x".into(),
+        }]);
         assert!(result.is_err());
     }
 }

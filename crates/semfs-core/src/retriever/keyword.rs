@@ -17,11 +17,14 @@ impl KeywordRetriever {
         }
 
         let safe_query = format!("\"{}\"", query.replace('"', "\"\""));
-        let results = self.store.search_fts(&safe_query)
+        let results = self
+            .store
+            .search_fts(&safe_query)
             .map_err(crate::error::CoreError::Storage)?;
 
         // Normalize FTS5 scores (they're negative, lower = better match)
-        let results: Vec<(i64, f32)> = results.into_iter()
+        let results: Vec<(i64, f32)> = results
+            .into_iter()
             .take(limit)
             .map(|(id, score)| {
                 // FTS5 rank is negative, convert to positive score

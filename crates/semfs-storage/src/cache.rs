@@ -14,7 +14,7 @@ struct CacheEntry<T> {
     #[allow(dead_code)]
     created_at: Instant,
     last_accessed: Instant,
-    file_ids: Vec<FileId>,  // For targeted invalidation
+    file_ids: Vec<FileId>, // For targeted invalidation
 }
 
 impl QueryCache {
@@ -40,19 +40,21 @@ impl QueryCache {
 
         // Evict LRU if at capacity
         if entries.len() >= self.max_size {
-            if let Some((&oldest_key, _)) = entries.iter()
-                .min_by_key(|(_, e)| e.last_accessed) {
+            if let Some((&oldest_key, _)) = entries.iter().min_by_key(|(_, e)| e.last_accessed) {
                 entries.remove(&oldest_key);
             }
         }
 
         let now = Instant::now();
-        entries.insert(query_hash, CacheEntry {
-            value: results,
-            created_at: now,
-            last_accessed: now,
-            file_ids,
-        });
+        entries.insert(
+            query_hash,
+            CacheEntry {
+                value: results,
+                created_at: now,
+                last_accessed: now,
+                file_ids,
+            },
+        );
     }
 
     /// Invalidate all cached queries that include the given file
@@ -128,7 +130,7 @@ pub struct ParsedQueryCache {
 #[derive(Clone, Debug)]
 pub struct ParsedQueryCacheEntry {
     pub semantic_query: String,
-    pub filters_json: String,  // Serialized filters
+    pub filters_json: String, // Serialized filters
 }
 
 impl ParsedQueryCache {
@@ -159,9 +161,11 @@ impl ParsedQueryCache {
 
         // Evict oldest if at capacity
         if entries.len() >= self.max_size {
-            if let Some((oldest_key, _)) = entries.iter()
+            if let Some((oldest_key, _)) = entries
+                .iter()
                 .min_by_key(|(_, (_, created))| *created)
-                .map(|(k, v)| (k.clone(), v.clone())) {
+                .map(|(k, v)| (k.clone(), v.clone()))
+            {
                 entries.remove(&oldest_key);
             }
         }
@@ -221,9 +225,27 @@ mod tests {
     #[test]
     fn test_query_cache_lru() {
         let cache = QueryCache::new(2);
-        let r1 = vec![SearchResult { file_id: 1, path: PathBuf::from("/a"), name: "a".into(), score: 1.0, matched_chunks: vec![] }];
-        let r2 = vec![SearchResult { file_id: 2, path: PathBuf::from("/b"), name: "b".into(), score: 1.0, matched_chunks: vec![] }];
-        let r3 = vec![SearchResult { file_id: 3, path: PathBuf::from("/c"), name: "c".into(), score: 1.0, matched_chunks: vec![] }];
+        let r1 = vec![SearchResult {
+            file_id: 1,
+            path: PathBuf::from("/a"),
+            name: "a".into(),
+            score: 1.0,
+            matched_chunks: vec![],
+        }];
+        let r2 = vec![SearchResult {
+            file_id: 2,
+            path: PathBuf::from("/b"),
+            name: "b".into(),
+            score: 1.0,
+            matched_chunks: vec![],
+        }];
+        let r3 = vec![SearchResult {
+            file_id: 3,
+            path: PathBuf::from("/c"),
+            name: "c".into(),
+            score: 1.0,
+            matched_chunks: vec![],
+        }];
 
         cache.put(1, r1, vec![1]);
         cache.put(2, r2, vec![2]);
@@ -240,7 +262,13 @@ mod tests {
     #[test]
     fn test_query_cache_invalidation() {
         let cache = QueryCache::new(10);
-        let results = vec![SearchResult { file_id: 1, path: PathBuf::from("/a"), name: "a".into(), score: 1.0, matched_chunks: vec![] }];
+        let results = vec![SearchResult {
+            file_id: 1,
+            path: PathBuf::from("/a"),
+            name: "a".into(),
+            score: 1.0,
+            matched_chunks: vec![],
+        }];
         cache.put(100, results, vec![1, 2]);
         cache.invalidate_file(1);
         assert!(cache.get(100).is_none());
@@ -257,10 +285,13 @@ mod tests {
     #[test]
     fn test_parsed_query_cache_ttl() {
         let cache = ParsedQueryCache::new(0, 10); // 0 second TTL
-        cache.put("test".into(), ParsedQueryCacheEntry {
-            semantic_query: "test".into(),
-            filters_json: "[]".into(),
-        });
+        cache.put(
+            "test".into(),
+            ParsedQueryCacheEntry {
+                semantic_query: "test".into(),
+                filters_json: "[]".into(),
+            },
+        );
         std::thread::sleep(std::time::Duration::from_millis(10));
         assert!(cache.get("test").is_none());
     }

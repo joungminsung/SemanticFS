@@ -20,16 +20,21 @@ pub enum QueryFilter {
 impl QueryFilter {
     pub fn to_metadata_filter(&self) -> MetadataFilter {
         match self {
-            QueryFilter::DateRange { start, end } => MetadataFilter::DateRange { start: *start, end: *end },
+            QueryFilter::DateRange { start, end } => MetadataFilter::DateRange {
+                start: *start,
+                end: *end,
+            },
             QueryFilter::Extension(exts) => MetadataFilter::Extension(exts.clone()),
-            QueryFilter::Size { min, max } => MetadataFilter::Size { min: *min, max: *max },
+            QueryFilter::Size { min, max } => MetadataFilter::Size {
+                min: *min,
+                max: *max,
+            },
             QueryFilter::MimeType(types) => MetadataFilter::MimeType(types.clone()),
         }
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum SortOrder {
     #[default]
     Relevance,
@@ -38,4 +43,3 @@ pub enum SortOrder {
     NameAsc,
     NameDesc,
 }
-

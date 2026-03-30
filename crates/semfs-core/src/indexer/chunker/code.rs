@@ -27,20 +27,23 @@ impl CodeChunker {
     fn node_to_chunk_type(kind: &str) -> Option<ChunkType> {
         match kind {
             // Rust
-            "function_item" | "function_definition" | "method_definition" |
-            "function_declaration" | "method_declaration" | "arrow_function" => {
-                Some(ChunkType::Function)
-            }
+            "function_item"
+            | "function_definition"
+            | "method_definition"
+            | "function_declaration"
+            | "method_declaration"
+            | "arrow_function" => Some(ChunkType::Function),
             // Classes/Structs
-            "struct_item" | "enum_item" | "class_declaration" |
-            "class_definition" | "impl_item" | "trait_item" |
-            "interface_declaration" | "type_declaration" => {
-                Some(ChunkType::Class)
-            }
+            "struct_item"
+            | "enum_item"
+            | "class_declaration"
+            | "class_definition"
+            | "impl_item"
+            | "trait_item"
+            | "interface_declaration"
+            | "type_declaration" => Some(ChunkType::Class),
             // Module-level
-            "source_file" | "module" | "program" => {
-                Some(ChunkType::Module)
-            }
+            "source_file" | "module" | "program" => Some(ChunkType::Module),
             _ => None,
         }
     }
@@ -50,7 +53,10 @@ impl CodeChunker {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "identifier" | "name" | "type_identifier" | "field_identifier"
+                "identifier"
+                | "name"
+                | "type_identifier"
+                | "field_identifier"
                 | "property_identifier" => {
                     return child.utf8_text(source).ok().map(|s| s.to_string());
                 }
@@ -212,16 +218,25 @@ fn main() {
         assert!(!chunks.is_empty(), "Should produce chunks");
 
         // Should have functions with parent relationships
-        let functions: Vec<_> = chunks.iter()
+        let functions: Vec<_> = chunks
+            .iter()
             .filter(|c| c.chunk_type == ChunkType::Function)
             .collect();
-        assert!(functions.len() >= 2, "Should detect at least 2 functions, got {}", functions.len());
+        assert!(
+            functions.len() >= 2,
+            "Should detect at least 2 functions, got {}",
+            functions.len()
+        );
 
         // At least some functions should have parent_index (inside impl block)
-        let with_parent: Vec<_> = functions.iter()
+        let with_parent: Vec<_> = functions
+            .iter()
             .filter(|f| f.parent_index.is_some())
             .collect();
-        assert!(!with_parent.is_empty(), "Some functions should have parents (inside impl)");
+        assert!(
+            !with_parent.is_empty(),
+            "Some functions should have parents (inside impl)"
+        );
     }
 
     #[test]
@@ -245,7 +260,8 @@ def main():
 
         assert!(!chunks.is_empty(), "Should produce chunks");
 
-        let classes: Vec<_> = chunks.iter()
+        let classes: Vec<_> = chunks
+            .iter()
             .filter(|c| c.chunk_type == ChunkType::Class)
             .collect();
         assert!(!classes.is_empty(), "Should detect class");

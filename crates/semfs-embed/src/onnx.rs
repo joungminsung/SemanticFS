@@ -16,7 +16,10 @@ pub struct OnnxEmbedder {
 
 impl OnnxEmbedder {
     pub fn new(model_path: &str) -> Result<Self> {
-        info!(path = model_path, "ONNX embedder initialized (stub — ort v2 API pending stable release)");
+        info!(
+            path = model_path,
+            "ONNX embedder initialized (stub — ort v2 API pending stable release)"
+        );
 
         let dimensions = if model_path.contains("MiniLM-L6") {
             384

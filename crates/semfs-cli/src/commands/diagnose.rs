@@ -23,11 +23,7 @@ pub fn execute(subsystem: Option<String>, as_json: bool) -> Result<()> {
     Ok(())
 }
 
-fn diagnose_index(
-    config: &AppConfig,
-    data_dir: &std::path::Path,
-    as_json: bool,
-) -> Result<()> {
+fn diagnose_index(config: &AppConfig, data_dir: &std::path::Path, as_json: bool) -> Result<()> {
     let db_path = data_dir.join("index.db");
 
     if as_json {
@@ -68,20 +64,15 @@ fn diagnose_index(
     Ok(())
 }
 
-fn diagnose_query(
-    config: &AppConfig,
-    _data_dir: &std::path::Path,
-    as_json: bool,
-) -> Result<()> {
-    let (embedder_name, embedder_dims, embedder_error) =
-        match semfs_embed::auto_detect_embedder() {
-            Ok(embedder) => (
-                Some(embedder.model_name().to_string()),
-                Some(embedder.dimensions()),
-                None,
-            ),
-            Err(e) => (None, None, Some(e.to_string())),
-        };
+fn diagnose_query(config: &AppConfig, _data_dir: &std::path::Path, as_json: bool) -> Result<()> {
+    let (embedder_name, embedder_dims, embedder_error) = match semfs_embed::auto_detect_embedder() {
+        Ok(embedder) => (
+            Some(embedder.model_name().to_string()),
+            Some(embedder.dimensions()),
+            None,
+        ),
+        Err(e) => (None, None, Some(e.to_string())),
+    };
 
     if as_json {
         let mut info = serde_json::json!({
@@ -93,7 +84,8 @@ fn diagnose_query(
             info["embedder_model"] = serde_json::json!(name);
             info["embedder_dimensions"] = serde_json::json!(embedder_dims.unwrap_or(0));
             if embedder_dims == Some(0) {
-                info["warning"] = serde_json::json!("No embedding model available. Using keyword-only search.");
+                info["warning"] =
+                    serde_json::json!("No embedding model available. Using keyword-only search.");
             }
         }
         if let Some(err) = &embedder_error {
@@ -112,9 +104,7 @@ fn diagnose_query(
                 let dims = embedder_dims.unwrap_or(0);
                 println!("  Embedder:                {} (dims: {})", name, dims);
                 if dims == 0 {
-                    println!(
-                        "  WARNING: No embedding model available. Using keyword-only search."
-                    );
+                    println!("  WARNING: No embedding model available. Using keyword-only search.");
                 }
             }
             (_, Some(e)) => {
