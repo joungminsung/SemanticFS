@@ -1,0 +1,23 @@
+[package]
+name = "semfs-fuse"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "FUSE abstraction layer for SemanticFS with cross-platform support"
+
+[features]
+default = []
+fuse-mount = ["fuser", "libc"]
+
+[dependencies]
+semfs-core = { path = "../semfs-core" }
+fuser = { workspace = true, optional = true }
+parking_lot = { workspace = true }
+crossbeam-channel = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+libc = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

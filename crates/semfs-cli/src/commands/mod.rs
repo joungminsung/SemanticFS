@@ -1,0 +1,9 @@
+pub mod config_cmd;
+pub mod diagnose;
+pub mod index;
+#[cfg(feature = "fuse")]
+pub mod mount;
+pub mod search;
+pub mod status;
+#[cfg(feature = "fuse")]
+pub mod unmount;

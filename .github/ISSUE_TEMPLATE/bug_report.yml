@@ -1,0 +1,45 @@
+name: Bug Report
+description: Report a bug in SemanticFS
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: Diagnostic Output
+      description: "Paste output of: semfs diagnose --json"
+      render: json
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "e.g., Ubuntu 22.04, macOS 14.3, Windows 11"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: SemanticFS Version
+      placeholder: "e.g., 0.1.0"
+    validations:
+      required: true

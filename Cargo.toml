@@ -1,0 +1,74 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/semfs-storage",
+    "crates/semfs-embed",
+    "crates/semfs-core",
+    "crates/semfs-watch",
+    "crates/semfs-fuse",
+    "crates/semfs-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/joungminsung/SemanticFS"
+description = "A FUSE-based semantic filesystem that lets you access files by meaning instead of paths"
+
+[workspace.dependencies]
+# Storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Embedding
+ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+
+# FUSE
+fuser = "0.14"
+
+# File watching
+notify = "6.1"
+notify-debouncer-full = "0.3"
+
+# Parsing
+tree-sitter = "0.24"
+tree-sitter-rust = "0.23"
+tree-sitter-python = "0.23"
+tree-sitter-javascript = "0.23"
+tree-sitter-typescript = "0.23"
+tree-sitter-go = "0.23"
+tree-sitter-java = "0.23"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+
+# Async/Concurrency
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Hashing
+sha2 = "0.10"
+
+# Testing
+proptest = "1"
+
+# Misc
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+regex = "1"
+dirs = "5"

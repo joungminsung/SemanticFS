@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: semfs
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            binary: semfs
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            binary: semfs
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            binary: semfs
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            binary: semfs.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Package
+        shell: bash
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../semfs-${{ matrix.target }}.tar.gz ${{ matrix.binary }}
+      - name: Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: semfs-${{ matrix.target }}.tar.gz

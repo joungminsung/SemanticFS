@@ -1,0 +1,34 @@
+[package]
+name = "semfs-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "CLI for SemanticFS semantic filesystem"
+
+[[bin]]
+name = "semfs"
+path = "src/main.rs"
+
+[features]
+default = []
+fuse = ["semfs-fuse"]
+
+[dependencies]
+semfs-fuse = { path = "../semfs-fuse", optional = true }
+semfs-core = { path = "../semfs-core" }
+semfs-storage = { path = "../semfs-storage" }
+semfs-embed = { path = "../semfs-embed" }
+semfs-watch = { path = "../semfs-watch" }
+clap = { workspace = true }
+toml = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+dirs = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
