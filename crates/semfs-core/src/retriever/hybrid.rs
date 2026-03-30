@@ -75,7 +75,24 @@ impl HybridRetriever {
             fused.retain(|(id, _)| valid_ids.contains(id));
         }
 
-        // 6. Take top_k and resolve to SearchResult
+        // 6. Apply relevance threshold — drop noise results
+        // For semantic-only results (no keyword hits), cosine similarity
+        // below ~0.3 is effectively noise. For RRF-fused results,
+        // use relative threshold: keep results within 50% of top score.
+        if let Some((_, top_score)) = fused.first() {
+            let top = *top_score;
+            let min_score = if top > 0.1 {
+                // Strong results exist — keep anything above 50% of top
+                top * 0.5
+            } else {
+                // All results are low confidence (semantic-only, no keyword match)
+                // Apply a stricter absolute threshold
+                0.02
+            };
+            fused.retain(|(_, score)| *score >= min_score);
+        }
+
+        // 7. Take top_k and resolve to SearchResult
         let results: Vec<SearchResult> = fused
             .into_iter()
             .take(top_k)
