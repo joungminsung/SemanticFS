@@ -1,12 +1,14 @@
 use crate::error::Result;
 use crate::indexer::chunker;
 use crate::indexer::crawler;
+use crossbeam_channel::{bounded, Sender};
 use semfs_embed::Embedder;
 use semfs_storage::{CacheManager, Chunk, ChunkEmbedding, FileMeta, LanceStore, SqliteStore};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 pub struct IndexingPipeline {
     sqlite: Arc<SqliteStore>,
@@ -18,8 +20,12 @@ pub struct IndexingPipeline {
     batch_size: usize,
 }
 
-/// Pending embedding work collected during file processing
-struct PendingEmbedding {
+/// A batch of chunks ready for embedding
+struct EmbedBatch {
+    items: Vec<EmbedItem>,
+}
+
+struct EmbedItem {
     chunk_id: i64,
     file_id: i64,
     text: String,
@@ -46,7 +52,12 @@ impl IndexingPipeline {
         }
     }
 
-    /// Run full indexing on a directory
+    /// Run full indexing with pipelined embedding.
+    ///
+    /// Main thread: read files → chunk → store metadata + FTS → send chunks to embed channel
+    /// Embed thread: receive chunk batches → call Ollama → store vectors
+    ///
+    /// This overlaps file I/O with model inference for maximum throughput.
     pub fn index_directory(&self, root: &Path) -> Result<IndexingStats> {
         info!(root = %root.display(), "Starting directory indexing");
         let files = crawler::crawl_directory(root, &self.ignore_patterns, self.max_file_size)?;
@@ -56,12 +67,77 @@ impl IndexingPipeline {
             ..Default::default()
         };
 
-        // Phase 1: Process all files — crawl, chunk, store metadata + FTS
-        // Collect embedding work without blocking on model inference
-        let mut pending_embeddings: Vec<PendingEmbedding> = Vec::new();
+        let has_embedder = self.embedder.dimensions() > 0;
+        // Smaller batches = faster pipeline throughput (Ollama processes faster with less input)
+        let embed_batch_size = self.batch_size.max(50);
+
+        // Set up producer-consumer pipeline for embeddings
+        let (embed_tx, embed_rx) = bounded::<EmbedBatch>(4); // Buffer 4 batches ahead
+        let embedded_count = Arc::new(AtomicUsize::new(0));
+        let embedded_count_clone = embedded_count.clone();
+
+        // Spawn embedding worker thread
+        let embedder = self.embedder.clone();
+        let lance = self.lance.clone();
+        let embed_thread = if has_embedder {
+            std::thread::Builder::new()
+                .name("semfs-embed-worker".to_string())
+                .spawn(move || {
+                    while let Ok(batch) = embed_rx.recv() {
+                        let texts: Vec<&str> =
+                            batch.items.iter().map(|p| p.text.as_str()).collect();
+
+                        match embedder.embed_batch(&texts) {
+                            Ok(embeddings) => {
+                                let chunk_embeddings: Vec<ChunkEmbedding> = embeddings
+                                    .into_iter()
+                                    .enumerate()
+                                    .map(|(i, vec)| ChunkEmbedding {
+                                        chunk_id: batch.items[i].chunk_id,
+                                        file_id: batch.items[i].file_id,
+                                        vector: vec,
+                                        content_preview: batch.items[i]
+                                            .text
+                                            .chars()
+                                            .take(100)
+                                            .collect(),
+                                    })
+                                    .collect();
+
+                                let count = chunk_embeddings.len();
+                                if let Err(e) = lance.insert(&chunk_embeddings) {
+                                    warn!(error = %e, "Failed to insert embeddings");
+                                } else {
+                                    embedded_count_clone.fetch_add(count, Ordering::Relaxed);
+                                    info!(count, "Embedded batch");
+                                }
+                            }
+                            Err(e) => {
+                                warn!(
+                                    error = %e,
+                                    count = batch.items.len(),
+                                    "Batch embedding failed"
+                                );
+                            }
+                        }
+                    }
+                })
+                .ok()
+        } else {
+            None
+        };
+
+        // Main thread: process files and stream batches to embed worker
+        let mut current_batch: Vec<EmbedItem> = Vec::with_capacity(embed_batch_size);
 
         for path in &files {
-            match self.process_file(path, &mut pending_embeddings) {
+            match self.process_file(
+                path,
+                has_embedder,
+                &mut current_batch,
+                &embed_tx,
+                embed_batch_size,
+            ) {
                 Ok(true) => stats.indexed += 1,
                 Ok(false) => stats.skipped += 1,
                 Err(e) => {
@@ -71,31 +147,41 @@ impl IndexingPipeline {
             }
         }
 
-        // Phase 2: Batch embed all collected chunks at once
-        if self.embedder.dimensions() > 0 && !pending_embeddings.is_empty() {
-            info!(
-                chunks = pending_embeddings.len(),
-                "Embedding all chunks in batches"
-            );
-            self.flush_embeddings(&pending_embeddings);
+        // Flush remaining batch
+        if !current_batch.is_empty() {
+            let batch = EmbedBatch {
+                items: std::mem::take(&mut current_batch),
+            };
+            let _ = embed_tx.send(batch);
         }
+
+        // Signal worker to finish and wait
+        drop(embed_tx);
+        if let Some(thread) = embed_thread {
+            let _ = thread.join();
+        }
+
+        let total_embedded = embedded_count.load(Ordering::Relaxed);
 
         info!(
             total = stats.total_files,
             indexed = stats.indexed,
             skipped = stats.skipped,
             errors = stats.errors,
+            embedded = total_embedded,
             "Indexing complete"
         );
         Ok(stats)
     }
 
-    /// Process a single file: read, hash-check, chunk, store metadata.
-    /// Embedding work is deferred to `pending_embeddings`.
+    /// Process a single file and stream embedding work to the worker.
     fn process_file(
         &self,
         path: &Path,
-        pending_embeddings: &mut Vec<PendingEmbedding>,
+        has_embedder: bool,
+        current_batch: &mut Vec<EmbedItem>,
+        embed_tx: &Sender<EmbedBatch>,
+        embed_batch_size: usize,
     ) -> Result<bool> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
@@ -107,7 +193,6 @@ impl IndexingPipeline {
 
         let hash = compute_hash(&content);
 
-        // Check if already indexed with same hash
         if let Ok(Some(existing_hash)) = self.sqlite.get_file_hash(path) {
             if existing_hash == hash {
                 return Ok(false);
@@ -145,7 +230,6 @@ impl IndexingPipeline {
             mime_type: detect_mime_type(path),
         };
 
-        // Delete existing entry if updating
         if let Ok(existing) = self.sqlite.get_file_by_path(path) {
             if let Some(id) = existing.id {
                 let _ = self.sqlite.delete_chunks_for_file(id);
@@ -155,14 +239,11 @@ impl IndexingPipeline {
             }
         }
 
-        // Insert file metadata
         let file_id = self.sqlite.insert_file(&file_meta)?;
 
-        // Index content for FTS
         self.sqlite
             .index_content(file_id, &file_meta.name, &path.to_string_lossy(), &content)?;
 
-        // Chunk the file and collect embedding work
         if let Some(chunker) = chunker::get_chunker(path) {
             let chunk_data = chunker.chunk(path, &content);
 
@@ -171,7 +252,7 @@ impl IndexingPipeline {
                     id: None,
                     file_id,
                     chunk_index: idx,
-                    parent_chunk_id: None, // Simplified — parent resolution deferred
+                    parent_chunk_id: None,
                     content: cd.content.clone(),
                     chunk_type: cd.chunk_type.clone(),
                     start_line: cd.start_line,
@@ -180,60 +261,55 @@ impl IndexingPipeline {
                 };
                 let chunk_id = self.sqlite.insert_chunk(&chunk)?;
 
-                // Queue non-empty chunks for embedding
-                if self.embedder.dimensions() > 0 && !cd.content.trim().is_empty() {
-                    pending_embeddings.push(PendingEmbedding {
+                if has_embedder && !cd.content.trim().is_empty() {
+                    current_batch.push(EmbedItem {
                         chunk_id,
                         file_id,
                         text: cd.content.clone(),
                     });
-                }
-            }
-        }
 
-        debug!(file_id, path = %path.display(), "Indexed file metadata");
-        Ok(true)
-    }
-
-    /// Flush all pending embeddings in large batches
-    fn flush_embeddings(&self, pending: &[PendingEmbedding]) {
-        let embed_batch_size = self.batch_size.max(50); // At least 50 per batch
-
-        for batch in pending.chunks(embed_batch_size) {
-            let texts: Vec<&str> = batch.iter().map(|p| p.text.as_str()).collect();
-
-            match self.embedder.embed_batch(&texts) {
-                Ok(embeddings) => {
-                    let chunk_embeddings: Vec<ChunkEmbedding> = embeddings
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, vec)| ChunkEmbedding {
-                            chunk_id: batch[i].chunk_id,
-                            file_id: batch[i].file_id,
-                            vector: vec,
-                            content_preview: batch[i].text.chars().take(100).collect(),
-                        })
-                        .collect();
-
-                    if let Err(e) = self.lance.insert(&chunk_embeddings) {
-                        warn!(error = %e, "Failed to insert embeddings");
-                    } else {
-                        info!(count = chunk_embeddings.len(), "Embedded batch");
+                    // Send batch when full — worker processes while we keep reading files
+                    if current_batch.len() >= embed_batch_size {
+                        let batch = EmbedBatch {
+                            items: std::mem::take(current_batch),
+                        };
+                        let _ = embed_tx.send(batch);
                     }
                 }
-                Err(e) => {
-                    warn!(error = %e, count = batch.len(), "Batch embedding failed");
-                }
             }
         }
+
+        debug!(file_id, path = %path.display(), "Indexed file");
+        Ok(true)
     }
 
     /// Index a single file (for incremental updates)
     pub fn index_file(&self, path: &Path) -> Result<bool> {
-        let mut pending = Vec::new();
-        let result = self.process_file(path, &mut pending)?;
-        if !pending.is_empty() {
-            self.flush_embeddings(&pending);
+        let (tx, rx) = bounded::<EmbedBatch>(1);
+        let mut batch = Vec::new();
+        let result =
+            self.process_file(path, self.embedder.dimensions() > 0, &mut batch, &tx, 100)?;
+        if !batch.is_empty() {
+            let _ = tx.send(EmbedBatch { items: batch });
+        }
+        drop(tx);
+
+        // Process embeddings inline for single file
+        while let Ok(b) = rx.recv() {
+            let texts: Vec<&str> = b.items.iter().map(|p| p.text.as_str()).collect();
+            if let Ok(embeddings) = self.embedder.embed_batch(&texts) {
+                let chunk_embeddings: Vec<ChunkEmbedding> = embeddings
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, vec)| ChunkEmbedding {
+                        chunk_id: b.items[i].chunk_id,
+                        file_id: b.items[i].file_id,
+                        vector: vec,
+                        content_preview: b.items[i].text.chars().take(100).collect(),
+                    })
+                    .collect();
+                let _ = self.lance.insert(&chunk_embeddings);
+            }
         }
         Ok(result)
     }
