@@ -1,7 +1,6 @@
 use crate::config::AppConfig;
 use anyhow::Result;
 use std::path::PathBuf;
-use tracing::info;
 
 pub fn execute(
     source: PathBuf,
@@ -32,7 +31,7 @@ pub fn execute(
         &data_dir.join("vectors.lance"),
         config.embedding.dimensions,
     )?);
-    let wal = std::sync::Arc::new(semfs_storage::WalStore::new(&data_dir.join("wal.db"))?);
+    let _wal = std::sync::Arc::new(semfs_storage::WalStore::new(&data_dir.join("wal.db"))?);
     let cache = std::sync::Arc::new(semfs_storage::CacheManager::new(
         config.search.cache_size,
         300, // parsed query TTL
