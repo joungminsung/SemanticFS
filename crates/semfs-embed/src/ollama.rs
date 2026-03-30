@@ -107,28 +107,46 @@ impl Embedder for OllamaEmbedder {
             return Ok(Vec::new());
         }
 
-        // Ollama /api/embed accepts input as array
-        let request = EmbedRequestBatch {
-            model: self.model.clone(),
-            input: texts.iter().map(|t| t.to_string()).collect(),
-        };
+        // Truncate each text to ~2000 chars (~512 tokens) to stay within context limits
+        let truncated: Vec<String> = texts
+            .iter()
+            .map(|t| {
+                if t.len() > 2000 {
+                    t[..t.floor_char_boundary(2000)].to_string()
+                } else {
+                    t.to_string()
+                }
+            })
+            .collect();
 
-        let resp = self.call_embed(&request)?;
+        // Split into sub-batches of 20 to avoid exceeding total context length
+        let sub_batch_size = 20;
+        let mut all_embeddings: Vec<Vec<f32>> = Vec::with_capacity(texts.len());
 
-        if resp.embeddings.len() != texts.len() {
-            anyhow::bail!(
-                "Ollama returned {} embeddings for {} inputs",
-                resp.embeddings.len(),
-                texts.len()
-            );
+        for sub_batch in truncated.chunks(sub_batch_size) {
+            let request = EmbedRequestBatch {
+                model: self.model.clone(),
+                input: sub_batch.to_vec(),
+            };
+
+            let resp = self.call_embed(&request)?;
+
+            if resp.embeddings.len() != sub_batch.len() {
+                anyhow::bail!(
+                    "Ollama returned {} embeddings for {} inputs",
+                    resp.embeddings.len(),
+                    sub_batch.len()
+                );
+            }
+            all_embeddings.extend(resp.embeddings);
         }
 
         debug!(
             model = %self.model,
-            count = texts.len(),
+            count = all_embeddings.len(),
             "Batch embedded"
         );
-        Ok(resp.embeddings)
+        Ok(all_embeddings)
     }
 
     fn dimensions(&self) -> usize {
