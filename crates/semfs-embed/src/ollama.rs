@@ -13,7 +13,7 @@ pub struct OllamaEmbedder {
 #[derive(Serialize)]
 struct EmbedRequest {
     model: String,
-    prompt: String,
+    input: String,
 }
 
 #[derive(Deserialize)]
@@ -60,7 +60,7 @@ impl Embedder for OllamaEmbedder {
         let url = format!("{}/api/embed", self.base_url);
         let request = EmbedRequest {
             model: self.model.clone(),
-            prompt: text.to_string(),
+            input: text.to_string(),
         };
 
         let response = self
@@ -93,7 +93,8 @@ impl Embedder for OllamaEmbedder {
     fn dimensions(&self) -> usize {
         // Common dimensions for popular models
         match self.model.as_str() {
-            "multilingual-e5-base" => 768,
+            "bge-m3" => 1024,
+            "multilingual-e5-base" | "multilingual-e5-large" => 768,
             "nomic-embed-text" => 768,
             "all-minilm" => 384,
             "mxbai-embed-large" => 1024,

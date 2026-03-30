@@ -164,29 +164,46 @@ impl IndexingPipeline {
                 chunk_ids.push(chunk_id);
             }
 
-            // Generate embeddings for chunks
+            // Generate embeddings for non-empty chunks only
             if self.embedder.dimensions() > 0 {
-                let texts: Vec<&str> = chunk_data.iter().map(|cd| cd.content.as_str()).collect();
+                // Filter out empty chunks (e.g., Module-level placeholders)
+                let embeddable: Vec<(usize, &str)> = chunk_data
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, cd)| !cd.content.trim().is_empty())
+                    .map(|(i, cd)| (i, cd.content.as_str()))
+                    .collect();
 
-                match self.embedder.embed_batch(&texts) {
-                    Ok(embeddings) => {
-                        let chunk_embeddings: Vec<ChunkEmbedding> = embeddings
-                            .into_iter()
-                            .enumerate()
-                            .map(|(i, vec)| ChunkEmbedding {
-                                chunk_id: chunk_ids[i],
-                                file_id,
-                                vector: vec,
-                                content_preview: chunk_data[i].content.chars().take(100).collect(),
-                            })
-                            .collect();
+                if !embeddable.is_empty() {
+                    let texts: Vec<&str> = embeddable.iter().map(|(_, t)| *t).collect();
 
-                        if let Err(e) = self.lance.insert(&chunk_embeddings) {
-                            warn!(error = %e, "Failed to insert embeddings");
+                    match self.embedder.embed_batch(&texts) {
+                        Ok(embeddings) => {
+                            let chunk_embeddings: Vec<ChunkEmbedding> = embeddings
+                                .into_iter()
+                                .enumerate()
+                                .map(|(emb_idx, vec)| {
+                                    let orig_idx = embeddable[emb_idx].0;
+                                    ChunkEmbedding {
+                                        chunk_id: chunk_ids[orig_idx],
+                                        file_id,
+                                        vector: vec,
+                                        content_preview: chunk_data[orig_idx]
+                                            .content
+                                            .chars()
+                                            .take(100)
+                                            .collect(),
+                                    }
+                                })
+                                .collect();
+
+                            if let Err(e) = self.lance.insert(&chunk_embeddings) {
+                                warn!(error = %e, "Failed to insert embeddings");
+                            }
                         }
-                    }
-                    Err(e) => {
-                        warn!(error = %e, path = %path.display(), "Failed to embed chunks");
+                        Err(e) => {
+                            warn!(error = %e, path = %path.display(), "Failed to embed chunks");
+                        }
                     }
                 }
             }

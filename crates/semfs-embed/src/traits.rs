@@ -50,10 +50,22 @@ pub fn auto_detect_embedder() -> Result<Box<dyn Embedder>> {
     // Try Ollama first
     #[cfg(feature = "ollama")]
     {
-        if let Ok(embedder) = crate::ollama::OllamaEmbedder::new("multilingual-e5-base") {
-            if embedder.is_available() {
-                tracing::info!("Auto-detected Ollama embedder");
-                return Ok(Box::new(embedder));
+        // Try common multilingual embedding models in order of preference
+        let models = [
+            "bge-m3",
+            "multilingual-e5-base",
+            "nomic-embed-text",
+            "all-minilm",
+        ];
+        for model_name in &models {
+            if let Ok(embedder) = crate::ollama::OllamaEmbedder::new(model_name) {
+                if embedder.is_available() {
+                    // Verify this specific model exists by trying a test embed
+                    if embedder.embed_text("test").is_ok() {
+                        tracing::info!(model = model_name, "Auto-detected Ollama embedder");
+                        return Ok(Box::new(embedder));
+                    }
+                }
             }
         }
     }

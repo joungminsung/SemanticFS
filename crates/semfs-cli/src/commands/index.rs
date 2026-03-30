@@ -16,16 +16,23 @@ pub fn execute(source: PathBuf, full: bool) -> Result<()> {
     std::fs::create_dir_all(&data_dir)?;
 
     let sqlite = std::sync::Arc::new(semfs_storage::SqliteStore::new(&data_dir.join("index.db"))?);
-    let lance = std::sync::Arc::new(semfs_storage::LanceStore::new(
-        &data_dir.join("vectors.lance"),
-        config.embedding.dimensions,
-    )?);
     let cache = std::sync::Arc::new(semfs_storage::CacheManager::default());
 
     let embedder: std::sync::Arc<dyn semfs_embed::Embedder> =
         std::sync::Arc::from(semfs_embed::auto_detect_embedder()?);
 
-    println!("  Embedder: {}", embedder.model_name());
+    // Use actual embedder dimensions (not config) to avoid mismatch
+    let dims = if embedder.dimensions() > 0 {
+        embedder.dimensions()
+    } else {
+        config.embedding.dimensions
+    };
+    let lance = std::sync::Arc::new(semfs_storage::LanceStore::new(
+        &data_dir.join("vectors.lance"),
+        dims,
+    )?);
+
+    println!("  Embedder: {} ({}d)", embedder.model_name(), dims);
 
     let pipeline = semfs_core::IndexingPipeline::new(
         sqlite.clone(),
