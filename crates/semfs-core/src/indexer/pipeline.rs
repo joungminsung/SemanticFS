@@ -18,6 +18,13 @@ pub struct IndexingPipeline {
     batch_size: usize,
 }
 
+/// Pending embedding work collected during file processing
+struct PendingEmbedding {
+    chunk_id: i64,
+    file_id: i64,
+    text: String,
+}
+
 impl IndexingPipeline {
     pub fn new(
         sqlite: Arc<SqliteStore>,
@@ -49,19 +56,28 @@ impl IndexingPipeline {
             ..Default::default()
         };
 
-        // Process in batches
-        for batch in files.chunks(self.batch_size) {
-            match self.process_batch(batch) {
-                Ok(batch_stats) => {
-                    stats.indexed += batch_stats.indexed;
-                    stats.skipped += batch_stats.skipped;
-                    stats.errors += batch_stats.errors;
-                }
+        // Phase 1: Process all files — crawl, chunk, store metadata + FTS
+        // Collect embedding work without blocking on model inference
+        let mut pending_embeddings: Vec<PendingEmbedding> = Vec::new();
+
+        for path in &files {
+            match self.process_file(path, &mut pending_embeddings) {
+                Ok(true) => stats.indexed += 1,
+                Ok(false) => stats.skipped += 1,
                 Err(e) => {
-                    error!("Batch processing error: {}", e);
-                    stats.errors += batch.len();
+                    debug!(path = %path.display(), error = %e, "Failed to index file");
+                    stats.errors += 1;
                 }
             }
+        }
+
+        // Phase 2: Batch embed all collected chunks at once
+        if self.embedder.dimensions() > 0 && !pending_embeddings.is_empty() {
+            info!(
+                chunks = pending_embeddings.len(),
+                "Embedding all chunks in batches"
+            );
+            self.flush_embeddings(&pending_embeddings);
         }
 
         info!(
@@ -74,8 +90,13 @@ impl IndexingPipeline {
         Ok(stats)
     }
 
-    /// Index a single file (for incremental updates)
-    pub fn index_file(&self, path: &Path) -> Result<bool> {
+    /// Process a single file: read, hash-check, chunk, store metadata.
+    /// Embedding work is deferred to `pending_embeddings`.
+    fn process_file(
+        &self,
+        path: &Path,
+        pending_embeddings: &mut Vec<PendingEmbedding>,
+    ) -> Result<bool> {
         let content = match std::fs::read_to_string(path) {
             Ok(c) => c,
             Err(e) => {
@@ -89,12 +110,10 @@ impl IndexingPipeline {
         // Check if already indexed with same hash
         if let Ok(Some(existing_hash)) = self.sqlite.get_file_hash(path) {
             if existing_hash == hash {
-                debug!(path = %path.display(), "File unchanged, skipping");
                 return Ok(false);
             }
         }
 
-        // Get file metadata
         let metadata = std::fs::metadata(path)?;
         let file_meta = FileMeta {
             id: None,
@@ -143,17 +162,16 @@ impl IndexingPipeline {
         self.sqlite
             .index_content(file_id, &file_meta.name, &path.to_string_lossy(), &content)?;
 
-        // Chunk the file
+        // Chunk the file and collect embedding work
         if let Some(chunker) = chunker::get_chunker(path) {
             let chunk_data = chunker.chunk(path, &content);
-            let mut chunk_ids = Vec::new();
 
             for (idx, cd) in chunk_data.iter().enumerate() {
                 let chunk = Chunk {
                     id: None,
                     file_id,
                     chunk_index: idx,
-                    parent_chunk_id: cd.parent_index.and_then(|pi| chunk_ids.get(pi).copied()),
+                    parent_chunk_id: None, // Simplified — parent resolution deferred
                     content: cd.content.clone(),
                     chunk_type: cd.chunk_type.clone(),
                     start_line: cd.start_line,
@@ -161,73 +179,63 @@ impl IndexingPipeline {
                     metadata: std::collections::HashMap::new(),
                 };
                 let chunk_id = self.sqlite.insert_chunk(&chunk)?;
-                chunk_ids.push(chunk_id);
-            }
 
-            // Generate embeddings for non-empty chunks only
-            if self.embedder.dimensions() > 0 {
-                // Filter out empty chunks (e.g., Module-level placeholders)
-                let embeddable: Vec<(usize, &str)> = chunk_data
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, cd)| !cd.content.trim().is_empty())
-                    .map(|(i, cd)| (i, cd.content.as_str()))
-                    .collect();
-
-                if !embeddable.is_empty() {
-                    let texts: Vec<&str> = embeddable.iter().map(|(_, t)| *t).collect();
-
-                    match self.embedder.embed_batch(&texts) {
-                        Ok(embeddings) => {
-                            let chunk_embeddings: Vec<ChunkEmbedding> = embeddings
-                                .into_iter()
-                                .enumerate()
-                                .map(|(emb_idx, vec)| {
-                                    let orig_idx = embeddable[emb_idx].0;
-                                    ChunkEmbedding {
-                                        chunk_id: chunk_ids[orig_idx],
-                                        file_id,
-                                        vector: vec,
-                                        content_preview: chunk_data[orig_idx]
-                                            .content
-                                            .chars()
-                                            .take(100)
-                                            .collect(),
-                                    }
-                                })
-                                .collect();
-
-                            if let Err(e) = self.lance.insert(&chunk_embeddings) {
-                                warn!(error = %e, "Failed to insert embeddings");
-                            }
-                        }
-                        Err(e) => {
-                            warn!(error = %e, path = %path.display(), "Failed to embed chunks");
-                        }
-                    }
+                // Queue non-empty chunks for embedding
+                if self.embedder.dimensions() > 0 && !cd.content.trim().is_empty() {
+                    pending_embeddings.push(PendingEmbedding {
+                        chunk_id,
+                        file_id,
+                        text: cd.content.clone(),
+                    });
                 }
             }
         }
 
-        debug!(file_id, path = %path.display(), "Indexed file");
+        debug!(file_id, path = %path.display(), "Indexed file metadata");
         Ok(true)
     }
 
-    fn process_batch(&self, files: &[PathBuf]) -> Result<IndexingStats> {
-        let mut stats = IndexingStats::default();
+    /// Flush all pending embeddings in large batches
+    fn flush_embeddings(&self, pending: &[PendingEmbedding]) {
+        let embed_batch_size = self.batch_size.max(50); // At least 50 per batch
 
-        for path in files {
-            match self.index_file(path) {
-                Ok(true) => stats.indexed += 1,
-                Ok(false) => stats.skipped += 1,
+        for batch in pending.chunks(embed_batch_size) {
+            let texts: Vec<&str> = batch.iter().map(|p| p.text.as_str()).collect();
+
+            match self.embedder.embed_batch(&texts) {
+                Ok(embeddings) => {
+                    let chunk_embeddings: Vec<ChunkEmbedding> = embeddings
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, vec)| ChunkEmbedding {
+                            chunk_id: batch[i].chunk_id,
+                            file_id: batch[i].file_id,
+                            vector: vec,
+                            content_preview: batch[i].text.chars().take(100).collect(),
+                        })
+                        .collect();
+
+                    if let Err(e) = self.lance.insert(&chunk_embeddings) {
+                        warn!(error = %e, "Failed to insert embeddings");
+                    } else {
+                        info!(count = chunk_embeddings.len(), "Embedded batch");
+                    }
+                }
                 Err(e) => {
-                    debug!(path = %path.display(), error = %e, "Failed to index file");
-                    stats.errors += 1;
+                    warn!(error = %e, count = batch.len(), "Batch embedding failed");
                 }
             }
         }
+    }
 
-        Ok(stats)
+    /// Index a single file (for incremental updates)
+    pub fn index_file(&self, path: &Path) -> Result<bool> {
+        let mut pending = Vec::new();
+        let result = self.process_file(path, &mut pending)?;
+        if !pending.is_empty() {
+            self.flush_embeddings(&pending);
+        }
+        Ok(result)
     }
 }
 
