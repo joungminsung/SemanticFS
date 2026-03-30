@@ -1,31 +1,126 @@
 use crate::error::{Result, StorageError};
 use crate::types::*;
 use parking_lot::RwLock;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
-use tracing::{debug, info};
+use std::path::{Path, PathBuf};
+use tracing::{debug, info, warn};
 
 /// Vector store for semantic search.
-///
-/// Default: in-memory brute-force search (no external dependencies).
-/// With `lancedb-backend` feature: backed by LanceDB for ANN search at scale.
+/// Persists embeddings to disk as a binary file for cross-process durability.
 type EmbeddingData = HashMap<FileId, Vec<(ChunkId, Vec<f32>)>>;
+
+#[derive(Serialize, Deserialize)]
+struct VectorStoreData {
+    dimensions: usize,
+    entries: Vec<VectorEntry>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct VectorEntry {
+    file_id: FileId,
+    chunk_id: ChunkId,
+    vector: Vec<f32>,
+}
 
 pub struct LanceStore {
     dimensions: usize,
     data: RwLock<EmbeddingData>,
-    _db_path: std::path::PathBuf,
+    db_path: PathBuf,
 }
 
 impl LanceStore {
     pub fn new(path: &Path, dimensions: usize) -> Result<Self> {
         std::fs::create_dir_all(path).map_err(StorageError::Io)?;
-        info!(path = %path.display(), dimensions, "Vector store initialized (in-memory)");
-        Ok(Self {
+
+        let store = Self {
             dimensions,
             data: RwLock::new(HashMap::new()),
-            _db_path: path.to_path_buf(),
-        })
+            db_path: path.to_path_buf(),
+        };
+
+        // Load existing data from disk
+        store.load_from_disk();
+
+        info!(
+            path = %path.display(),
+            dimensions,
+            count = store.count().unwrap_or(0),
+            "Vector store initialized"
+        );
+        Ok(store)
+    }
+
+    fn data_file(&self) -> PathBuf {
+        self.db_path.join("vectors.bin")
+    }
+
+    fn load_from_disk(&self) {
+        let path = self.data_file();
+        if !path.exists() {
+            return;
+        }
+
+        match std::fs::read(&path) {
+            Ok(bytes) => match bincode_decode::<VectorStoreData>(&bytes) {
+                Ok(store_data) => {
+                    if store_data.dimensions != self.dimensions {
+                        warn!(
+                            stored = store_data.dimensions,
+                            expected = self.dimensions,
+                            "Vector dimensions mismatch, discarding stored vectors"
+                        );
+                        return;
+                    }
+                    let mut data = self.data.write();
+                    for entry in store_data.entries {
+                        data.entry(entry.file_id)
+                            .or_default()
+                            .push((entry.chunk_id, entry.vector));
+                    }
+                    debug!(
+                        count = data.values().map(|v| v.len()).sum::<usize>(),
+                        "Loaded vectors from disk"
+                    );
+                }
+                Err(e) => {
+                    warn!(error = %e, "Failed to parse vector store, starting fresh");
+                }
+            },
+            Err(e) => {
+                warn!(error = %e, "Failed to read vector store file");
+            }
+        }
+    }
+
+    fn save_to_disk(&self) {
+        let data = self.data.read();
+        let mut entries = Vec::new();
+        for (&file_id, chunks) in data.iter() {
+            for (chunk_id, vector) in chunks {
+                entries.push(VectorEntry {
+                    file_id,
+                    chunk_id: *chunk_id,
+                    vector: vector.clone(),
+                });
+            }
+        }
+
+        let store_data = VectorStoreData {
+            dimensions: self.dimensions,
+            entries,
+        };
+
+        match bincode_encode(&store_data) {
+            Ok(bytes) => {
+                if let Err(e) = std::fs::write(self.data_file(), bytes) {
+                    warn!(error = %e, "Failed to persist vector store");
+                }
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to serialize vector store");
+            }
+        }
     }
 
     pub fn insert(&self, embeddings: &[ChunkEmbedding]) -> Result<()> {
@@ -43,12 +138,17 @@ impl LanceStore {
             }
         }
 
-        let mut data = self.data.write();
-        for emb in embeddings {
-            data.entry(emb.file_id)
-                .or_default()
-                .push((emb.chunk_id, emb.vector.clone()));
+        {
+            let mut data = self.data.write();
+            for emb in embeddings {
+                data.entry(emb.file_id)
+                    .or_default()
+                    .push((emb.chunk_id, emb.vector.clone()));
+            }
         }
+
+        // Persist after each batch insert
+        self.save_to_disk();
 
         info!(count = embeddings.len(), "Inserted embeddings");
         Ok(())
@@ -65,7 +165,6 @@ impl LanceStore {
 
         let data = self.data.read();
 
-        // Brute-force cosine similarity search
         let mut file_scores: HashMap<FileId, f32> = HashMap::new();
 
         for (&file_id, chunks) in data.iter() {
@@ -89,6 +188,7 @@ impl LanceStore {
 
     pub fn delete_by_file(&self, file_id: FileId) -> Result<()> {
         self.data.write().remove(&file_id);
+        self.save_to_disk();
         debug!(file_id, "Deleted embeddings for file");
         Ok(())
     }
@@ -107,6 +207,15 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
         return 0.0;
     }
     dot / (norm_a * norm_b)
+}
+
+// Simple binary serialization using serde_json (no extra deps)
+fn bincode_encode(data: &VectorStoreData) -> std::result::Result<Vec<u8>, String> {
+    serde_json::to_vec(data).map_err(|e| e.to_string())
+}
+
+fn bincode_decode<T: serde::de::DeserializeOwned>(bytes: &[u8]) -> std::result::Result<T, String> {
+    serde_json::from_slice(bytes).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -143,8 +252,35 @@ mod tests {
 
         let results = store.search(&[1.0, 0.0, 0.0], 2).unwrap();
         assert_eq!(results.len(), 2);
-        // file1 should be most similar to [1,0,0]
         assert_eq!(results[0].0, 1);
+    }
+
+    #[test]
+    fn test_persistence() {
+        let dir = TempDir::new().unwrap();
+
+        // Write
+        {
+            let store = LanceStore::new(dir.path(), 3).unwrap();
+            store
+                .insert(&[ChunkEmbedding {
+                    chunk_id: 1,
+                    file_id: 1,
+                    vector: vec![1.0, 0.0, 0.0],
+                    content_preview: "test".into(),
+                }])
+                .unwrap();
+            assert_eq!(store.count().unwrap(), 1);
+        }
+
+        // Read back in new instance
+        {
+            let store = LanceStore::new(dir.path(), 3).unwrap();
+            assert_eq!(store.count().unwrap(), 1);
+            let results = store.search(&[1.0, 0.0, 0.0], 5).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].0, 1);
+        }
     }
 
     #[test]
