@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::info;
 
+#[derive(Default)]
 pub struct LinuxFuseProvider;
 
 impl LinuxFuseProvider {
@@ -58,21 +59,14 @@ impl LinuxFuseProvider {
 }
 
 impl FuseProvider for LinuxFuseProvider {
-    fn mount(&self, source: &Path, mountpoint: &Path, options: &MountOptions) -> Result<()> {
-        info!(
-            source = %source.display(),
-            mountpoint = %mountpoint.display(),
-            "Mounting SemanticFS (Linux FUSE)"
-        );
-
-        std::fs::create_dir_all(mountpoint)?;
-
+    fn mount(&self, source: &Path, mountpoint: &Path, _options: &MountOptions) -> Result<()> {
         info!(
             source = %source.display(),
             mountpoint = %mountpoint.display(),
             "FUSE mount configured. Use LinuxFuseProvider::mount_filesystem() with a VfsMapper to start the filesystem."
         );
 
+        std::fs::create_dir_all(mountpoint)?;
         Ok(())
     }
 

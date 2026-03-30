@@ -129,7 +129,7 @@ impl SemanticFilesystem {
                 return FileAttr {
                     ino,
                     size: meta.len(),
-                    blocks: (meta.len() + BLOCK_SIZE as u64 - 1) / BLOCK_SIZE as u64,
+                    blocks: meta.len().div_ceil(BLOCK_SIZE as u64),
                     atime,
                     mtime,
                     ctime,
@@ -425,7 +425,7 @@ impl Filesystem for SemanticFilesystem {
                     return;
                 }
             };
-            if let Err(_) = file.seek(SeekFrom::Start(offset as u64)) {
+            if file.seek(SeekFrom::Start(offset as u64)).is_err() {
                 reply.error(EIO);
                 return;
             }

@@ -7,6 +7,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::info;
 
+#[derive(Default)]
 pub struct MacFuseProvider;
 
 impl MacFuseProvider {
@@ -66,7 +67,7 @@ impl MacFuseProvider {
 }
 
 impl FuseProvider for MacFuseProvider {
-    fn mount(&self, source: &Path, mountpoint: &Path, options: &MountOptions) -> Result<()> {
+    fn mount(&self, source: &Path, mountpoint: &Path, _options: &MountOptions) -> Result<()> {
         info!(
             source = %source.display(),
             mountpoint = %mountpoint.display(),
