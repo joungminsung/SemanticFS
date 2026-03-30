@@ -23,10 +23,8 @@ impl OnnxEmbedder {
 
         let dimensions = if model_path.contains("MiniLM-L6") {
             384
-        } else if model_path.contains("e5") || model_path.contains("nomic") {
-            768
         } else {
-            768
+            768 // default for multilingual-e5, nomic, and other models
         };
 
         Ok(Self {

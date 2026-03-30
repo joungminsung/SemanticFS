@@ -239,7 +239,7 @@ impl Filesystem for SemanticFilesystem {
         reply.error(ENOENT);
     }
 
-    fn getattr(&mut self, _req: &Request, ino: u64, _fh: Option<u64>, reply: ReplyAttr) {
+    fn getattr(&mut self, _req: &Request, ino: u64, reply: ReplyAttr) {
         let entry = {
             let map = self.inode_map.read();
             map.get(&ino).cloned()

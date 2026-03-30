@@ -36,7 +36,7 @@ impl LinuxFuseProvider {
 
         let mut mount_options = vec![
             MountOption::FSName("semanticfs".to_string()),
-            MountOption::DefaultPermission,
+            MountOption::DefaultPermissions,
         ];
         if options.auto_unmount {
             mount_options.push(MountOption::AutoUnmount);
