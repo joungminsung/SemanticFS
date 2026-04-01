@@ -20,6 +20,7 @@ impl CodeChunker {
             "ts" | "tsx" => Some(tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()),
             "go" => Some(tree_sitter_go::LANGUAGE.into()),
             "java" => Some(tree_sitter_java::LANGUAGE.into()),
+            "kt" | "kts" => Some(tree_sitter_kotlin::LANGUAGE.into()),
             _ => None,
         }
     }
@@ -41,7 +42,9 @@ impl CodeChunker {
             | "impl_item"
             | "trait_item"
             | "interface_declaration"
-            | "type_declaration" => Some(ChunkType::Class),
+            | "type_declaration"
+            | "object_declaration"
+            | "companion_object" => Some(ChunkType::Class),
             // Module-level
             "source_file" | "module" | "program" => Some(ChunkType::Module),
             _ => None,
@@ -121,7 +124,7 @@ impl Default for CodeChunker {
 
 impl Chunker for CodeChunker {
     fn supported_extensions(&self) -> &[&str] {
-        &["rs", "py", "js", "jsx", "ts", "tsx", "go", "java"]
+        &["rs", "py", "js", "jsx", "ts", "tsx", "go", "java", "kt", "kts"]
     }
 
     fn chunk(&self, path: &Path, content: &str) -> Vec<ChunkData> {
@@ -280,5 +283,68 @@ def main():
         let chunker = CodeChunker::new();
         let chunks = chunker.chunk(Path::new("empty.rs"), "");
         assert!(chunks.is_empty());
+    }
+
+    #[test]
+    fn test_kotlin_chunking() {
+        let content = r#"
+package com.example
+
+class Server {
+    private val port: Int
+    
+    constructor(port: Int) {
+        this.port = port
+    }
+    
+    fun start() {
+        println("Starting on port $port")
+    }
+    
+    companion object {
+        fun create(port: Int): Server = Server(port)
+    }
+}
+
+object Constants {
+    const val DEFAULT_PORT = 8080
+}
+"#;
+        let chunker = CodeChunker::new();
+        let chunks = chunker.chunk(Path::new("server.kt"), content);
+
+        assert!(!chunks.is_empty(), "Should produce chunks");
+
+        // Should have classes (class Server, object Constants)
+        let classes: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == ChunkType::Class)
+            .collect();
+        assert!(
+            classes.len() >= 2,
+            "Should detect at least 2 classes (Server and Constants), got {}",
+            classes.len()
+        );
+
+        // Should have functions (fun start, fun create)
+        let functions: Vec<_> = chunks
+            .iter()
+            .filter(|c| c.chunk_type == ChunkType::Function)
+            .collect();
+        assert!(
+            functions.len() >= 2,
+            "Should detect at least 2 functions, got {}",
+            functions.len()
+        );
+
+        // Functions inside class should have parent_index
+        let with_parent: Vec<_> = functions
+            .iter()
+            .filter(|f| f.parent_index.is_some())
+            .collect();
+        assert!(
+            !with_parent.is_empty(),
+            "Some functions should have parents (inside class)"
+        );
     }
 }
