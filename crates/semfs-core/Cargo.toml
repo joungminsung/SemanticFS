@@ -15,6 +15,7 @@ tree-sitter-javascript = { workspace = true }
 tree-sitter-typescript = { workspace = true }
 tree-sitter-go = { workspace = true }
 tree-sitter-java = { workspace = true }
+tree-sitter-kotlin = { workspace = true }
 crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true }
 regex = { workspace = true }
